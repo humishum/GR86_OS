@@ -1,0 +1,6 @@
+.DS_Store
+*.pdf
+*.zip
+*.sofa
+sandbox/papers/docs/
+sandbox/papers/code/pyroomacoustics-master/docs/
