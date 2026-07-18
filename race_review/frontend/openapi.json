@@ -1,0 +1,2098 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "GR86 Race Review API",
+    "description": "Local-first GoPro race review using canonical video-relative seconds.",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Health Api Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/media": {
+      "get": {
+        "summary": "Browse Media",
+        "operationId": "browse_media_api_media_get",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Path"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MediaEntry"
+                  },
+                  "title": "Response Browse Media Api Media Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions": {
+      "get": {
+        "summary": "Sessions",
+        "operationId": "sessions_api_sessions_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SessionManifest"
+                  },
+                  "type": "array",
+                  "title": "Response Sessions Api Sessions Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/import": {
+      "post": {
+        "summary": "Import Session",
+        "operationId": "import_session_api_sessions_import_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}": {
+      "get": {
+        "summary": "Session",
+        "operationId": "session_api_sessions__session_id__get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionManifest"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}/status": {
+      "get": {
+        "summary": "Import Status",
+        "operationId": "import_status_api_sessions__session_id__status_get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}/telemetry": {
+      "get": {
+        "summary": "Telemetry",
+        "operationId": "telemetry_api_sessions__session_id__telemetry_get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "minimum": 0,
+              "default": 0,
+              "title": "Start"
+            }
+          },
+          {
+            "name": "end",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fields"
+            }
+          },
+          {
+            "name": "max_points",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100000,
+              "minimum": 2,
+              "default": 8000,
+              "title": "Max Points"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TelemetryWindow"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}/laps": {
+      "get": {
+        "summary": "Laps",
+        "operationId": "laps_api_sessions__session_id__laps_get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LapSummary"
+                  },
+                  "title": "Response Laps Api Sessions  Session Id  Laps Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}/corners": {
+      "get": {
+        "summary": "Corners",
+        "operationId": "corners_api_sessions__session_id__corners_get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CornerSummary"
+                  },
+                  "title": "Response Corners Api Sessions  Session Id  Corners Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Update Corners",
+        "operationId": "update_corners_api_sessions__session_id__corners_put",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CornerEdit"
+                },
+                "title": "Edits"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CornerSummary"
+                  },
+                  "title": "Response Update Corners Api Sessions  Session Id  Corners Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}/comparison": {
+      "get": {
+        "summary": "Lap Comparison",
+        "operationId": "lap_comparison_api_sessions__session_id__comparison_get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "reference_lap",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Reference Lap"
+            }
+          },
+          {
+            "name": "comparison_lap",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "title": "Comparison Lap"
+            }
+          },
+          {
+            "name": "points",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 2000,
+              "minimum": 50,
+              "default": 500,
+              "title": "Points"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "array",
+                    "items": {
+                      "type": "number"
+                    }
+                  },
+                  "title": "Response Lap Comparison Api Sessions  Session Id  Comparison Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}/track-geometry": {
+      "get": {
+        "summary": "Track Geometry",
+        "operationId": "track_geometry_api_sessions__session_id__track_geometry_get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrackGeometryAdapter"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}/track": {
+      "put": {
+        "summary": "Update Track",
+        "operationId": "update_track_api_sessions__session_id__track_put",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrackConfig"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionManifest"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}/calibration": {
+      "put": {
+        "summary": "Update Calibration",
+        "operationId": "update_calibration_api_sessions__session_id__calibration_put",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Calibration"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionManifest"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}/reanalyze": {
+      "post": {
+        "summary": "Reanalyze",
+        "operationId": "reanalyze_api_sessions__session_id__reanalyze_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionManifest"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}/media/proxy": {
+      "get": {
+        "summary": "Proxy Media",
+        "operationId": "proxy_media_api_sessions__session_id__media_proxy_get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}/thumbnail": {
+      "get": {
+        "summary": "Thumbnail",
+        "operationId": "thumbnail_api_sessions__session_id__thumbnail_get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}/export": {
+      "post": {
+        "summary": "Export Bundle",
+        "operationId": "export_bundle_api_sessions__session_id__export_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "include_clip_references",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Clip References"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AxisTransform": {
+        "properties": {
+          "forward_axis": {
+            "type": "string",
+            "enum": [
+              "x",
+              "y",
+              "z"
+            ],
+            "title": "Forward Axis",
+            "default": "x"
+          },
+          "lateral_axis": {
+            "type": "string",
+            "enum": [
+              "x",
+              "y",
+              "z"
+            ],
+            "title": "Lateral Axis",
+            "default": "y"
+          },
+          "forward_sign": {
+            "type": "integer",
+            "enum": [
+              -1,
+              1
+            ],
+            "title": "Forward Sign",
+            "default": 1
+          },
+          "lateral_sign": {
+            "type": "integer",
+            "enum": [
+              -1,
+              1
+            ],
+            "title": "Lateral Sign",
+            "default": 1
+          }
+        },
+        "type": "object",
+        "title": "AxisTransform"
+      },
+      "Calibration": {
+        "properties": {
+          "transform": {
+            "$ref": "#/components/schemas/AxisTransform"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence",
+            "default": 0.0
+          },
+          "method": {
+            "type": "string",
+            "title": "Method",
+            "default": "unavailable"
+          },
+          "overridden": {
+            "type": "boolean",
+            "title": "Overridden",
+            "default": false
+          },
+          "diagnostics": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Diagnostics"
+          }
+        },
+        "type": "object",
+        "title": "Calibration"
+      },
+      "ChapterManifest": {
+        "properties": {
+          "index": {
+            "type": "integer",
+            "title": "Index"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "fingerprint": {
+            "$ref": "#/components/schemas/SourceFingerprint"
+          },
+          "creation_time": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Creation Time"
+          },
+          "duration_seconds": {
+            "type": "number",
+            "title": "Duration Seconds"
+          },
+          "timeline_start_seconds": {
+            "type": "number",
+            "title": "Timeline Start Seconds"
+          },
+          "timeline_end_seconds": {
+            "type": "number",
+            "title": "Timeline End Seconds"
+          },
+          "gap_before_seconds": {
+            "type": "number",
+            "title": "Gap Before Seconds",
+            "default": 0.0
+          },
+          "discontinuity": {
+            "type": "boolean",
+            "title": "Discontinuity",
+            "default": false
+          },
+          "recording_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recording Id"
+          },
+          "streams": {
+            "items": {
+              "$ref": "#/components/schemas/MediaStream"
+            },
+            "type": "array",
+            "title": "Streams"
+          },
+          "telemetry_packets": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Telemetry Packets"
+          }
+        },
+        "type": "object",
+        "required": [
+          "index",
+          "filename",
+          "fingerprint",
+          "duration_seconds",
+          "timeline_start_seconds",
+          "timeline_end_seconds"
+        ],
+        "title": "ChapterManifest"
+      },
+      "CoordinateOrigin": {
+        "properties": {
+          "latitude": {
+            "type": "number",
+            "title": "Latitude"
+          },
+          "longitude": {
+            "type": "number",
+            "title": "Longitude"
+          },
+          "altitude_m": {
+            "type": "number",
+            "title": "Altitude M"
+          },
+          "convention": {
+            "type": "string",
+            "const": "WGS84 + right-handed ENU meters",
+            "title": "Convention",
+            "default": "WGS84 + right-handed ENU meters"
+          }
+        },
+        "type": "object",
+        "required": [
+          "latitude",
+          "longitude",
+          "altitude_m"
+        ],
+        "title": "CoordinateOrigin"
+      },
+      "CornerEdit": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "update",
+              "delete",
+              "create",
+              "split",
+              "merge"
+            ],
+            "title": "Action",
+            "default": "update"
+          },
+          "corner_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Corner Id"
+          },
+          "corner_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Corner Ids"
+          },
+          "merged_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merged Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "first_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Name"
+          },
+          "second_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Second Name"
+          },
+          "start_distance_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Distance M"
+          },
+          "apex_distance_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apex Distance M"
+          },
+          "end_distance_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Distance M"
+          },
+          "boundary_distance_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Boundary Distance M"
+          }
+        },
+        "type": "object",
+        "title": "CornerEdit"
+      },
+      "CornerSummary": {
+        "properties": {
+          "corner_id": {
+            "type": "string",
+            "title": "Corner Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "start_distance_m": {
+            "type": "number",
+            "title": "Start Distance M"
+          },
+          "apex_distance_m": {
+            "type": "number",
+            "title": "Apex Distance M"
+          },
+          "end_distance_m": {
+            "type": "number",
+            "title": "End Distance M"
+          },
+          "entry_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry Seconds"
+          },
+          "apex_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apex Seconds"
+          },
+          "exit_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Seconds"
+          },
+          "entry_speed_mps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry Speed Mps"
+          },
+          "apex_speed_mps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apex Speed Mps"
+          },
+          "exit_speed_mps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Speed Mps"
+          },
+          "minimum_speed_mps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum Speed Mps"
+          },
+          "braking_distance_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Braking Distance M"
+          },
+          "peak_lateral_g": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Peak Lateral G"
+          },
+          "exit_acceleration_mps2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Acceleration Mps2"
+          }
+        },
+        "type": "object",
+        "required": [
+          "corner_id",
+          "name",
+          "start_distance_m",
+          "apex_distance_m",
+          "end_distance_m"
+        ],
+        "title": "CornerSummary"
+      },
+      "ENUPoint": {
+        "properties": {
+          "east_m": {
+            "type": "number",
+            "title": "East M"
+          },
+          "north_m": {
+            "type": "number",
+            "title": "North M"
+          },
+          "up_m": {
+            "type": "number",
+            "title": "Up M"
+          }
+        },
+        "type": "object",
+        "required": [
+          "east_m",
+          "north_m",
+          "up_m"
+        ],
+        "title": "ENUPoint"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ImportRequest": {
+        "properties": {
+          "chapters": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Chapters"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "generate_proxy": {
+            "type": "boolean",
+            "title": "Generate Proxy",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "chapters"
+        ],
+        "title": "ImportRequest"
+      },
+      "ImportResponse": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "status"
+        ],
+        "title": "ImportResponse"
+      },
+      "JobStatus": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "stage": {
+            "type": "string",
+            "title": "Stage"
+          },
+          "progress": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Progress"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "default": ""
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "status",
+          "stage",
+          "progress",
+          "updated_at"
+        ],
+        "title": "JobStatus"
+      },
+      "LapSummary": {
+        "properties": {
+          "lap_number": {
+            "type": "integer",
+            "title": "Lap Number"
+          },
+          "start_seconds": {
+            "type": "number",
+            "title": "Start Seconds"
+          },
+          "end_seconds": {
+            "type": "number",
+            "title": "End Seconds"
+          },
+          "lap_time_seconds": {
+            "type": "number",
+            "title": "Lap Time Seconds"
+          },
+          "complete": {
+            "type": "boolean",
+            "title": "Complete"
+          },
+          "excluded": {
+            "type": "boolean",
+            "title": "Excluded",
+            "default": false
+          },
+          "minimum_speed_mps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum Speed Mps"
+          },
+          "maximum_speed_mps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maximum Speed Mps"
+          },
+          "peak_acceleration_mps2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Peak Acceleration Mps2"
+          },
+          "peak_braking_mps2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Peak Braking Mps2"
+          },
+          "peak_longitudinal_g": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Peak Longitudinal G"
+          },
+          "peak_lateral_g": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Peak Lateral G"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lap_number",
+          "start_seconds",
+          "end_seconds",
+          "lap_time_seconds",
+          "complete"
+        ],
+        "title": "LapSummary"
+      },
+      "LinePoint": {
+        "properties": {
+          "east_m": {
+            "type": "number",
+            "title": "East M"
+          },
+          "north_m": {
+            "type": "number",
+            "title": "North M"
+          }
+        },
+        "type": "object",
+        "required": [
+          "east_m",
+          "north_m"
+        ],
+        "title": "LinePoint"
+      },
+      "MediaEntry": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "title": "Size Bytes"
+          },
+          "modified_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Modified At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "name",
+          "size_bytes",
+          "modified_at"
+        ],
+        "title": "MediaEntry"
+      },
+      "MediaStream": {
+        "properties": {
+          "index": {
+            "type": "integer",
+            "title": "Index"
+          },
+          "codec_type": {
+            "type": "string",
+            "title": "Codec Type"
+          },
+          "codec_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codec Name"
+          },
+          "codec_tag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codec Tag"
+          },
+          "duration_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Seconds"
+          },
+          "frame_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frame Rate"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          }
+        },
+        "type": "object",
+        "required": [
+          "index",
+          "codec_type"
+        ],
+        "title": "MediaStream"
+      },
+      "SessionManifest": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1,
+            "title": "Schema Version",
+            "default": 1
+          },
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "duration_seconds": {
+            "type": "number",
+            "title": "Duration Seconds"
+          },
+          "chapters": {
+            "items": {
+              "$ref": "#/components/schemas/ChapterManifest"
+            },
+            "type": "array",
+            "title": "Chapters"
+          },
+          "streams": {
+            "items": {
+              "$ref": "#/components/schemas/StreamQualitySummary"
+            },
+            "type": "array",
+            "title": "Streams"
+          },
+          "coordinate_origin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CoordinateOrigin"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "processing_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Processing Versions"
+          },
+          "processing_options": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "type": "object",
+            "title": "Processing Options"
+          },
+          "edits": {
+            "$ref": "#/components/schemas/UserEdits"
+          },
+          "artifacts": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Artifacts"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "session_id",
+          "name",
+          "created_at",
+          "updated_at",
+          "status",
+          "duration_seconds",
+          "chapters",
+          "processing_versions"
+        ],
+        "title": "SessionManifest"
+      },
+      "SourceFingerprint": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "title": "Size Bytes"
+          },
+          "modified_ns": {
+            "type": "integer",
+            "title": "Modified Ns"
+          },
+          "sha256": {
+            "type": "string",
+            "title": "Sha256"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "size_bytes",
+          "modified_ns",
+          "sha256"
+        ],
+        "title": "SourceFingerprint"
+      },
+      "StreamQualitySummary": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "samples": {
+            "type": "integer",
+            "title": "Samples"
+          },
+          "timing_method": {
+            "type": "string",
+            "title": "Timing Method"
+          },
+          "estimated_rate_hz": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Rate Hz"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence",
+            "default": 0.0
+          },
+          "residual_rms_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residual Rms Seconds"
+          },
+          "discontinuities": {
+            "type": "integer",
+            "title": "Discontinuities",
+            "default": 0
+          },
+          "valid_samples": {
+            "type": "integer",
+            "title": "Valid Samples",
+            "default": 0
+          },
+          "artifact": {
+            "type": "string",
+            "title": "Artifact"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "samples",
+          "timing_method",
+          "artifact"
+        ],
+        "title": "StreamQualitySummary"
+      },
+      "TelemetryWindow": {
+        "properties": {
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "rows": {
+            "items": {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "start_seconds": {
+            "type": "number",
+            "title": "Start Seconds"
+          },
+          "end_seconds": {
+            "type": "number",
+            "title": "End Seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "columns",
+          "rows",
+          "start_seconds",
+          "end_seconds"
+        ],
+        "title": "TelemetryWindow"
+      },
+      "TrackConfig": {
+        "properties": {
+          "start_finish_a": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LinePoint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "start_finish_b": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LinePoint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "crossing_direction": {
+            "type": "integer",
+            "enum": [
+              -1,
+              1
+            ],
+            "title": "Crossing Direction",
+            "default": 1
+          },
+          "minimum_lap_seconds": {
+            "type": "number",
+            "title": "Minimum Lap Seconds",
+            "default": 20.0
+          },
+          "exclude_out_lap": {
+            "type": "boolean",
+            "title": "Exclude Out Lap",
+            "default": true
+          },
+          "exclude_in_lap": {
+            "type": "boolean",
+            "title": "Exclude In Lap",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "TrackConfig"
+      },
+      "TrackGeometryAdapter": {
+        "properties": {
+          "schema_version": {
+            "type": "integer",
+            "const": 1,
+            "title": "Schema Version",
+            "default": 1
+          },
+          "coordinate_system": {
+            "type": "string",
+            "const": "WGS84 + right-handed ENU meters",
+            "title": "Coordinate System",
+            "default": "WGS84 + right-handed ENU meters"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/CoordinateOrigin"
+          },
+          "time_alignment_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Alignment Seconds"
+          },
+          "route_wgs84": {
+            "items": {
+              "$ref": "#/components/schemas/WGS84Point"
+            },
+            "type": "array",
+            "title": "Route Wgs84"
+          },
+          "route_enu_m": {
+            "items": {
+              "$ref": "#/components/schemas/ENUPoint"
+            },
+            "type": "array",
+            "title": "Route Enu M"
+          }
+        },
+        "type": "object",
+        "required": [
+          "origin",
+          "route_wgs84",
+          "route_enu_m"
+        ],
+        "title": "TrackGeometryAdapter",
+        "description": "Stable handoff boundary for future reconstruction geometry."
+      },
+      "UserEdits": {
+        "properties": {
+          "track": {
+            "$ref": "#/components/schemas/TrackConfig"
+          },
+          "calibration": {
+            "$ref": "#/components/schemas/Calibration"
+          },
+          "corner_edits": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Corner Edits"
+          },
+          "display_units": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Display Units"
+          }
+        },
+        "type": "object",
+        "title": "UserEdits"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "WGS84Point": {
+        "properties": {
+          "latitude": {
+            "type": "number",
+            "title": "Latitude"
+          },
+          "longitude": {
+            "type": "number",
+            "title": "Longitude"
+          },
+          "altitude_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Altitude M"
+          }
+        },
+        "type": "object",
+        "required": [
+          "latitude",
+          "longitude"
+        ],
+        "title": "WGS84Point"
+      }
+    }
+  }
+}

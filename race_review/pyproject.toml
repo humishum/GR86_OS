@@ -1,0 +1,57 @@
+[project]
+name = "gr86-race-review"
+version = "0.1.0"
+description = "Local-first GoPro race review and telemetry analysis"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115,<0.116",
+  "anyio>=4.4,<4.10",
+  "numpy>=1.26,<3",
+  "pandas>=2.2,<3",
+  "pyarrow>=17,<22",
+  "pydantic>=2.9,<3",
+  "pyproj>=3.7,<4",
+  "scipy>=1.14,<2",
+  "uvicorn[standard]>=0.32,<0.36",
+  "gopropy>=0.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx>=0.28,<1",
+  "pytest>=9,<10",
+  "pytest-cov>=6,<8",
+]
+
+[project.scripts]
+race-review = "race_review.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/race_review"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.uv.sources]
+# Keep parser work in its independently versioned sibling checkout; provenance is pinned below.
+gopropy = { path = "../../gopro-py", editable = true }
+
+[tool.race-review]
+gopropy-repository = "https://github.com/humishum/gopropy.git"
+gopropy-revision = "3040b2f4efc8624e24c0962289eabb25f6a26c7b"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
