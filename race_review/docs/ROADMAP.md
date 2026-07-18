@@ -12,8 +12,8 @@ Outcome: the current single-chapter Sonoma workflow is fast, observable, and tru
 2. Add a real short media fixture to Playwright so presented-frame callbacks, playback,
    paused seeking, gauge changes, map movement, chart cursor movement, and scrubber time
    are tested together.
-3. Add an in-app diagnostics panel showing media backend, proxy/source codec, telemetry
-   timestamp range, sample rate, current video time, nearest sample time, and drift.
+3. Add an in-app diagnostics panel showing the telemetry timestamp range, sample rate,
+   current video time, nearest sample time, and drift.
 4. Distinguish missing telemetry from numeric zero in gauges and chart readouts.
 5. Add keyboard playback controls: space, arrows, frame-step, rate changes, and lap jumps.
 
@@ -23,6 +23,12 @@ Definition of done:
 - a browser regression fails if the canonical clock freezes again;
 - users can explain the current media/telemetry state without opening developer tools;
 - all primary controls work without a mouse.
+
+Kickoff progress (2026-07-18): the browser regression, opt-in diagnostics, missing-value
+semantics, and keyboard workflow are complete. The CUDA host path and a representative
+30-second CPU/CUDA window are verified in [the GTX 1070 benchmark](benchmarks/proxy-2026-07-18.md);
+the full-chapter benchmark remains deferred to keep effort focused on review and analysis
+features.
 
 ## Milestone 0.2: fast source-to-review
 
@@ -39,7 +45,7 @@ environment retains a reliable fallback.
 
 Definition of done:
 
-- a supported M4/modern desktop opens a one-chapter session without waiting for a proxy;
+- a supported mac M3/modern desktop opens a one-chapter session without waiting for a proxy;
 - an unsupported browser falls back without manual intervention;
 - restarting at any import stage repeats only invalid or incomplete work;
 - no operation modifies the GoPro source.

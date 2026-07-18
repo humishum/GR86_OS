@@ -133,14 +133,18 @@ the calibration estimate are preserved for future fused metrics.
 
 ### Laps and corners
 
-The start/finish inference searches for repeated, same-direction route proximity and
-creates a directed line. Crossings are interpolated and constrained by line extent,
-direction, segment continuity, and minimum lap duration. First/last partial laps are
-retained and can be excluded.
+The start/finish inference searches for repeated, same-direction route proximity,
+then refines the directed line from the median position and circular-mean heading of
+all passages. Crossings are interpolated and constrained by line extent, direction,
+segment continuity, and minimum lap duration. First/last partial laps are retained,
+annotated on projected telemetry, and can be excluded.
 
 A reference centerline supports normalized lap-distance projection and two-lap delta
-calculation. Sustained curvature/lateral-acceleration regions produce editable corner
-summaries with entry, apex, exit, speeds, braking, lateral g, and exit acceleration.
+calculation. When multiple complete laps exist, distance-aligned median curvature and
+lateral acceleration plus strict-majority agreement suppress lap-local GPS artifacts.
+Sustained regions produce editable corner summaries with entry, apex, exit, speeds,
+braking, lateral g, and exit acceleration. The thresholds and start/finish ambiguity
+are derived in [Track, Lap, and Corner Analysis](TRACK_ANALYSIS.md).
 
 ## Persistence model
 

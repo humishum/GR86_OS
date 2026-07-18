@@ -54,7 +54,7 @@ def build_proxy_command(
             "scale_cuda=-2:1080:interp_algo=lanczos",
             "-r",
             "60000/1001",
-            "-fps_mode",
+            "-vsync",
             "cfr",
             "-c:v",
             "h264_nvenc",

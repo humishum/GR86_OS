@@ -2,7 +2,7 @@ import { useState } from "react";
 import { api } from "../api";
 import type { Calibration, CornerSummary, SessionManifest, TrackConfig } from "../types";
 
-export function EditPanel({ session, corners, onSaved }: { session: SessionManifest; corners: CornerSummary[]; onSaved: () => void }) {
+export function EditPanel({ session, corners, onSaved, showDiagnostics, onShowDiagnosticsChange }: { session: SessionManifest; corners: CornerSummary[]; onSaved: () => void; showDiagnostics: boolean; onShowDiagnosticsChange: (show: boolean) => void }) {
   const [open, setOpen] = useState(false);
   const [track, setTrack] = useState<TrackConfig>(session.edits.track);
   const [calibration, setCalibration] = useState<Calibration>(session.edits.calibration);
@@ -38,6 +38,8 @@ export function EditPanel({ session, corners, onSaved }: { session: SessionManif
     {open && <div className="drawer-backdrop" onClick={() => setOpen(false)}><aside className="edit-drawer" onClick={(event) => event.stopPropagation()}>
       <div className="section-heading"><h2>Analysis setup</h2><button className="icon-button" onClick={() => setOpen(false)}>CLOSE</button></div>
       <p className="muted">Stored calculations remain SI. Overrides are deterministic and survive reprocessing.</p>
+      <h3>Diagnostics</h3>
+      <label className="check-field"><input type="checkbox" checked={showDiagnostics} onChange={(event) => onShowDiagnosticsChange(event.target.checked)} /> Show synchronization diagnostics</label>
       <label className="field">Optional MapLibre raster tile template<input value={tileUrl} onChange={(event) => setTileUrl(event.target.value)} placeholder="https://…/{z}/{x}/{y}.png" /></label>
       <h3>Start / finish line</h3>
       {(["a", "b"] as const).map((end) => <div className="coordinate-row" key={end}><b>{end.toUpperCase()}</b>

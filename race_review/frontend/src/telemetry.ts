@@ -2,6 +2,10 @@ import type { TelemetryWindow } from "./types";
 
 export type TelemetrySample = Record<string, number | boolean | null>;
 
+export function telemetryNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 export function unpackTelemetry(window: TelemetryWindow): TelemetrySample[] {
   return window.rows.map((row) =>
     Object.fromEntries(window.columns.map((column, index) => [column, row[index]])),
@@ -35,11 +39,15 @@ export function interpolateTelemetry(samples: TelemetrySample[], time: number): 
   return result;
 }
 
-export const mph = (metersPerSecond: number | null | undefined) =>
-  metersPerSecond == null ? 0 : metersPerSecond * 2.2369362921;
+export const mph = (metersPerSecond: number | null | undefined) => {
+  const value = telemetryNumber(metersPerSecond);
+  return value == null ? null : value * 2.2369362921;
+};
 
-export const feet = (meters: number | null | undefined) =>
-  meters == null ? 0 : meters * 3.280839895;
+export const feet = (meters: number | null | undefined) => {
+  const value = telemetryNumber(meters);
+  return value == null ? null : value * 3.280839895;
+};
 
 export function formatTime(seconds: number) {
   const minutes = Math.floor(seconds / 60);

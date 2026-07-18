@@ -218,6 +218,13 @@ def derive_kinematics(frame: pd.DataFrame) -> pd.DataFrame:
 
 
 def infer_start_finish(frame: pd.DataFrame, minimum_lap_seconds: float = 20.0) -> TrackConfig:
+    """Infer a repeatable timing gate and refine it from every observed passage.
+
+    A closed GPS trace cannot reveal which of its infinitely many cross-sections is
+    the venue's official timing line.  This chooses the most repeatable forward
+    loop closure, then uses the median position and circular-mean heading of all
+    passages so one noisy GPS sample does not move or rotate the gate.
+    """
     valid_frame = frame.loc[frame["valid"] & frame["heading_rad"].notna()].copy()
     if len(valid_frame) < 10:
         return TrackConfig(minimum_lap_seconds=minimum_lap_seconds)
@@ -242,6 +249,27 @@ def infer_start_finish(frame: pd.DataFrame, minimum_lap_seconds: float = 20.0) -
     index = best[0] if best else len(points) // 2
     center = points[index]
     heading = headings[index]
+    if best is not None:
+        distance = np.hypot(points[:, 0] - center[0], points[:, 1] - center[1])
+        heading_delta = np.abs(np.angle(np.exp(1j * (headings - heading))))
+        nearby = np.flatnonzero((distance < radius_m) & (heading_delta < math.radians(35)))
+        # Adjacent samples describe the same passage.  Keep its closest sample,
+        # then aggregate passages robustly instead of trusting the seed lap.
+        passage_indices = [
+            int(group[np.argmin(distance[group])])
+            for group in np.split(
+                nearby,
+                np.flatnonzero(
+                    (np.diff(nearby) != 1) | (np.diff(times[nearby]) > 2.0)
+                )
+                + 1,
+            )
+            if len(group)
+        ]
+        if len(passage_indices) >= 2:
+            center = np.median(points[passage_indices], axis=0)
+            unit_headings = np.exp(1j * headings[passage_indices])
+            heading = float(np.angle(np.mean(unit_headings)))
     normal = np.array([-math.sin(heading), math.cos(heading)])
     half_width_m = 18.0
     a = center - normal * half_width_m
@@ -350,6 +378,8 @@ def _finite_abs_peak(series: pd.Series) -> float | None:
 def assign_lap_distance(frame: pd.DataFrame, laps: list[LapSummary]) -> pd.DataFrame:
     result = frame.copy()
     result["lap_number"] = 0
+    result["lap_complete"] = False
+    result["lap_excluded"] = False
     result["lap_distance_m"] = np.nan
     result["lap_progress"] = np.nan
     for lap in laps:
@@ -361,6 +391,8 @@ def assign_lap_distance(frame: pd.DataFrame, laps: list[LapSummary]) -> pd.DataF
         distance = result.loc[indices, "distance_m"] - base
         total = float(distance.iloc[-1])
         result.loc[indices, "lap_number"] = lap.lap_number
+        result.loc[indices, "lap_complete"] = lap.complete
+        result.loc[indices, "lap_excluded"] = lap.excluded
         result.loc[indices, "lap_distance_m"] = distance
         if total > 0:
             result.loc[indices, "lap_progress"] = distance / total
@@ -408,6 +440,8 @@ def project_laps_to_centerline(
         return assign_lap_distance(frame, laps)
     result = frame.copy()
     result["lap_number"] = 0
+    result["lap_complete"] = False
+    result["lap_excluded"] = False
     result["lap_distance_m"] = np.nan
     result["lap_progress"] = np.nan
     center_points = centerline[["east_m", "north_m"]].to_numpy(float)
@@ -439,39 +473,188 @@ def project_laps_to_centerline(
         projected_indices = np.maximum.accumulate(nearest(positions))
         distance = center_distance[projected_indices]
         result.loc[indices, "lap_number"] = lap.lap_number
+        result.loc[indices, "lap_complete"] = lap.complete
+        result.loc[indices, "lap_excluded"] = lap.excluded
         result.loc[indices, "lap_distance_m"] = distance
         result.loc[indices, "lap_progress"] = distance / center_distance[-1]
     return result
 
 
 def detect_corners(frame: pd.DataFrame) -> list[CornerSummary]:
+    """Detect sustained, repeatable changes of heading along a lap.
+
+    When at least two near-complete laps are available, curvature and lateral
+    acceleration are interpolated onto a common distance grid and combined with
+    a pointwise median.  This rejects lap-local GPS noise before segmentation.
+    """
     if frame.empty or "curvature_1pm" not in frame:
         return []
     working = frame
+    signal_distance: np.ndarray | None = None
+    signal_curvature: np.ndarray | None = None
+    signal_lateral: np.ndarray | None = None
+    signal_support: np.ndarray | None = None
     if "lap_number" in frame and "lap_distance_m" in frame:
-        candidates = frame[(frame["lap_number"] > 0) & frame["lap_distance_m"].notna()]
+        lap_candidates = frame[
+            (frame["lap_number"] > 0) & frame["lap_distance_m"].notna() & frame["valid"]
+        ]
+        candidates = lap_candidates
+        if "lap_complete" in candidates:
+            complete_mask = candidates["lap_complete"].fillna(False).astype(bool)
+            if "lap_excluded" in candidates:
+                complete_mask &= ~candidates["lap_excluded"].fillna(False).astype(bool)
+            candidates = candidates[complete_mask]
         if not candidates.empty:
-            by_length = candidates.groupby("lap_number")["lap_distance_m"].max().sort_values()
-            working = candidates[candidates["lap_number"] == by_length.index[-1]].copy()
+            lap_groups = candidates.groupby("lap_number", sort=True)
+            by_length = lap_groups["lap_distance_m"].max()
+            maximum_length = float(by_length.max())
+            coverage_ratio = 0.98 if "lap_complete" in frame else 0.995
+            complete_numbers = by_length[
+                by_length >= coverage_ratio * maximum_length
+            ].index.tolist()
+            durations = lap_groups["timestamp"].agg(lambda values: values.max() - values.min())
+            reference_number = min(complete_numbers, key=lambda number: durations.loc[number])
+            working = candidates[candidates["lap_number"] == reference_number].copy()
             working["distance_m"] = working["lap_distance_m"]
-    curvature = working["curvature_1pm"].to_numpy(float)
-    lateral = working["lateral_accel_mps2"].to_numpy(float)
-    active = (
-        (np.abs(curvature) >= 0.008) & (np.abs(lateral) >= 1.5) & working["valid"].to_numpy(bool)
-    )
-    # Close short gaps to avoid splitting one corner around the apex.
-    active = pd.Series(active).rolling(5, center=True, min_periods=1).max().to_numpy(bool)
-    groups = _contiguous_runs(active, np.zeros(len(working), dtype=int))
+
+            if len(complete_numbers) >= 2:
+                grid_step_m = 6.0
+                common_length = float(by_length.loc[complete_numbers].min())
+                signal_distance = np.arange(0.0, common_length, grid_step_m)
+                curvature_laps: list[np.ndarray] = []
+                lateral_laps: list[np.ndarray] = []
+                for number in complete_numbers:
+                    lap = candidates[candidates["lap_number"] == number].sort_values(
+                        "lap_distance_m", kind="stable"
+                    )
+                    distance = lap["lap_distance_m"].to_numpy(float)
+                    lap_curvature = lap["curvature_1pm"].to_numpy(float)
+                    lap_lateral = lap["lateral_accel_mps2"].to_numpy(float)
+                    finite = (
+                        np.isfinite(distance)
+                        & np.isfinite(lap_curvature)
+                        & np.isfinite(lap_lateral)
+                    )
+                    distance = distance[finite]
+                    lap_curvature = lap_curvature[finite]
+                    lap_lateral = lap_lateral[finite]
+                    if len(distance) < 2:
+                        continue
+                    unique = np.r_[True, np.diff(distance) > 0]
+                    distance = distance[unique]
+                    if len(distance) < 2:
+                        continue
+                    curvature_laps.append(
+                        np.interp(
+                            signal_distance,
+                            distance,
+                            lap_curvature[unique],
+                        )
+                    )
+                    lateral_laps.append(
+                        np.interp(
+                            signal_distance,
+                            distance,
+                            lap_lateral[unique],
+                        )
+                    )
+                if len(curvature_laps) >= 2:
+                    curvature_stack = np.vstack(curvature_laps)
+                    lateral_stack = np.vstack(lateral_laps)
+                    signal_curvature = np.nanmedian(curvature_stack, axis=0)
+                    signal_lateral = np.nanmedian(lateral_stack, axis=0)
+                    agrees = (
+                        (np.abs(curvature_stack) >= 0.004)
+                        & (np.abs(lateral_stack) >= 1.0)
+                        & (curvature_stack * signal_curvature > 0)
+                    )
+                    # Strict majority means both laps must agree when only two
+                    # are available, while one outlier cannot dominate 3+ laps.
+                    signal_support = np.mean(agrees, axis=0) > 0.5
+        elif not lap_candidates.empty:
+            # No lap is marked complete (for example, a recording containing
+            # only out/in laps). Never concatenate reset lap distances into one
+            # artificial signal; degrade deliberately to the longest valid lap.
+            fallback_number = (
+                lap_candidates.groupby("lap_number")["lap_distance_m"].max().idxmax()
+            )
+            working = lap_candidates[
+                lap_candidates["lap_number"] == fallback_number
+            ].copy()
+            working["distance_m"] = working["lap_distance_m"]
+
+    consensus = signal_distance is not None and signal_curvature is not None
+    if consensus:
+        assert signal_distance is not None
+        assert signal_curvature is not None
+        assert signal_lateral is not None
+        assert signal_support is not None
+        distance = signal_distance
+        curvature = signal_curvature
+        lateral = signal_lateral
+        # The consensus permits a lower curvature threshold than a noisy single
+        # lap.  0.006 1/m is a 167 m radius; the acceleration guard rejects slow
+        # paddock motion and GPS wandering.
+        active = (
+            (np.abs(curvature) >= 0.006)
+            & (np.abs(lateral) >= 1.5)
+            & signal_support
+        )
+        active_indices = np.flatnonzero(active)
+        for left, right in zip(active_indices[:-1], active_indices[1:], strict=False):
+            same_direction = np.sign(curvature[left]) == np.sign(curvature[right])
+            if same_direction and distance[right] - distance[left] <= 32.0:
+                active[left : right + 1] = True
+        groups = _contiguous_runs(active, np.zeros(len(distance), dtype=int))
+    else:
+        distance = working["distance_m"].to_numpy(float)
+        curvature = working["curvature_1pm"].to_numpy(float)
+        lateral = working["lateral_accel_mps2"].to_numpy(float)
+        active = (
+            (np.abs(curvature) >= 0.008)
+            & (np.abs(lateral) >= 1.5)
+            & working["valid"].to_numpy(bool)
+        )
+        # Close a few samples of dropout when no multi-lap consensus is possible.
+        active = pd.Series(active).rolling(5, center=True, min_periods=1).max().to_numpy(bool)
+        groups = _contiguous_runs(active, np.zeros(len(working), dtype=int))
+
     corners: list[CornerSummary] = []
     for indices in groups:
-        if len(indices) < 4:
+        start_distance = float(distance[indices[0]])
+        end_distance = float(distance[indices[-1]])
+        minimum_length_m = 18.0 if consensus else 12.0
+        corner_curvature = curvature[indices]
+        corner_distance = distance[indices]
+        heading_change = abs(
+            float(
+                np.sum(
+                    (corner_curvature[1:] + corner_curvature[:-1])
+                    * np.diff(corner_distance)
+                    / 2
+                )
+            )
+        )
+        if (
+            len(indices) < 4
+            or end_distance - start_distance < minimum_length_m
+            or (consensus and heading_change < math.radians(8.0))
+        ):
             continue
-        section = working.iloc[indices]
-        start_distance = float(section["distance_m"].iloc[0])
-        end_distance = float(section["distance_m"].iloc[-1])
-        if end_distance - start_distance < 12:
+        section = working[
+            (working["distance_m"] >= start_distance)
+            & (working["distance_m"] <= end_distance)
+        ]
+        if section.empty:
             continue
-        apex_position = int(np.nanargmax(np.abs(section["lateral_accel_mps2"].to_numpy(float))))
+        consensus_apex_distance = float(
+            distance[indices[int(np.nanargmax(np.abs(lateral[indices])))]]
+        )
+        apex_position = int(
+            np.nanargmin(
+                np.abs(section["distance_m"].to_numpy(float) - consensus_apex_distance)
+            )
+        )
         apex = section.iloc[apex_position]
         before = working[
             (working["distance_m"] >= start_distance - 120)

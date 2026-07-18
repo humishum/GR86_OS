@@ -6,18 +6,21 @@ a reviewable artifact in one focused session. Move larger outcome changes into t
 
 ## Start tomorrow
 
-- [ ] Run `nvidia-smi` and the forced CUDA proxy path on the host.
+- [x] Run `nvidia-smi` and the forced CUDA proxy path on the host.
 - [ ] Benchmark `GX020115.MP4` with CPU and CUDA: wall time, FFmpeg speed, output size,
-  average bitrate, and representative seek latency.
-- [ ] Visually compare NVENC CQ 21 against the existing x264 proxy at fast motion and
+  average bitrate, and representative seek latency. A bounded 30-second host verification
+  is recorded in [the GTX 1070 benchmark](docs/benchmarks/proxy-2026-07-18.md); the
+  full-chapter run is intentionally deferred.
+- [x] Visually compare NVENC CQ 21 against the existing x264 proxy at fast motion and
   track-edge detail; adjust CQ/preset only with recorded results.
-- [ ] Add a generated 3–5 second H.264 test fixture with changing telemetry for real
+- [x] Add a generated 3–5 second H.264 test fixture with changing telemetry for real
   Playwright playback and seeking.
-- [ ] Assert that video time, timeline, lap gauge, speed gauge, map source, chart cursor,
+- [x] Assert that video time, timeline, lap gauge, speed gauge, map source, chart cursor,
   and readout all change after playback and paused seeking.
-- [ ] Add a compact diagnostics drawer for current media/telemetry synchronization.
-- [ ] Render unavailable gauge values as `—`, not `0.00`.
-- [ ] Add Space, Left/Right, Shift+Left/Right, and frame-step keyboard controls.
+- [x] Add a compact diagnostics drawer for current media/telemetry synchronization. Keep
+  it disabled by default and expose it only through a menu.
+- [x] Render unavailable gauge values as `—`, not `0.00`.
+- [x] Add Space, Left/Right, Shift+Left/Right, and frame-step keyboard controls.
 
 ## Media and import reliability
 

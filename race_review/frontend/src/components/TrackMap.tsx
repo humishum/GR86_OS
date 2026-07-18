@@ -66,6 +66,8 @@ export function TrackMap({ samples, current, corners, track }: Props) {
       sources,
       layers,
     };
+    container.current.setAttribute("data-position-longitude", String(coordinates[0][0]));
+    container.current.setAttribute("data-position-latitude", String(coordinates[0][1]));
     const map = new maplibregl.Map({ container: container.current, style, attributionControl: false });
     const bounds = coordinates.reduce(
       (box, coordinate) => box.extend(coordinate as [number, number]),
@@ -79,12 +81,20 @@ export function TrackMap({ samples, current, corners, track }: Props) {
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !current || typeof current.longitude !== "number" || typeof current.latitude !== "number") return;
-    const source = map.getSource("position") as GeoJSONSource | undefined;
-    source?.setData({
-      type: "Feature",
-      properties: {},
-      geometry: { type: "Point", coordinates: [current.longitude, current.latitude] },
-    });
+    const updatePosition = () => {
+      const source = map.getSource("position") as GeoJSONSource | undefined;
+      if (!source) return;
+      source.setData({
+        type: "Feature",
+        properties: {},
+        geometry: { type: "Point", coordinates: [current.longitude as number, current.latitude as number] },
+      });
+      container.current?.setAttribute("data-position-longitude", String(current.longitude));
+      container.current?.setAttribute("data-position-latitude", String(current.latitude));
+    };
+    if (map.isStyleLoaded()) updatePosition();
+    else map.once("load", updatePosition);
+    return () => { map.off("load", updatePosition); };
   }, [current]);
 
   return <div className="track-map" ref={container} aria-label="Offline route map" />;

@@ -7,6 +7,8 @@ the next milestones.
   processing, recovery, and operational boundaries.
 - [Product and interface design](DESIGN.md): interaction model, synchronization,
   visual layout, responsive behavior, units, accessibility, and design decisions.
+- [Track, lap, and corner analysis](TRACK_ANALYSIS.md): GPS math, multi-lap corner
+  consensus, start/finish limits, and the Sonoma Raceway benchmark.
 - [Roadmap](ROADMAP.md): ordered milestones, outcomes, dependencies, and definitions
   of done.
 - [Active TODO list](../TODO.md): concrete, checkable engineering tasks.

@@ -9,8 +9,9 @@ const session = {
   edits: { track: { start_finish_a: null, start_finish_b: null, crossing_direction: 1, minimum_lap_seconds: 20, exclude_out_lap: true, exclude_in_lap: true }, calibration: { transform: { forward_axis: "x", lateral_axis: "y", forward_sign: 1, lateral_sign: 1 }, confidence: .8, method: "test", overridden: false, diagnostics: {} }, corner_edits: [], display_units: { speed: "mph", acceleration: "g", distance: "ft", time: "s" } },
 };
 
-async function mockApi(page: Page) {
-  const rows = Array.from({ length: 121 }, (_, time) => [time, 38.1 + Math.sin(time / 10) * .001, -122.4 + Math.cos(time / 10) * .001, time, time, 25, 0.1, 0.4, time * 25, time < 60 ? 1 : 2, (time % 60) * 25, true]);
+async function mockApi(page: Page, firstTelemetryOverrides: Record<number, number | boolean | null> = {}) {
+  const rows: Array<Array<number | boolean | null>> = Array.from({ length: 121 }, (_, time) => [time, 38.1 + Math.sin(time / 10) * .001, -122.4 + Math.cos(time / 10) * .001, time, time, 25, 0.1, 0.4, time * 25, time < 60 ? 1 : 2, (time % 60) * 25, true]);
+  for (const [index, value] of Object.entries(firstTelemetryOverrides)) rows[0][Number(index)] = value;
   await page.route("**/api/**", async (route) => {
     const url = route.request().url();
     if (url.includes("/telemetry")) return route.fulfill({ json: { columns: ["timestamp", "latitude", "longitude", "east_smooth_m", "north_smooth_m", "speed_mps", "longitudinal_g", "lateral_g", "distance_m", "lap_number", "lap_distance_m", "valid"], rows, start_seconds: 0, end_seconds: 120 } });
@@ -38,6 +39,8 @@ test("video clock review surfaces stay synchronized and usable", async ({ page }
   await expect(page.locator(".gauge").filter({ hasText: "LAP" }).locator("strong")).toHaveText("2");
   await expect(page.getByRole("heading", { name: "Laps" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Telemetry" })).toBeVisible();
+  await expect(page.locator('.marker--corner[data-lap-number="1"]')).toHaveCount(1);
+  await expect(page.locator('.marker--corner[data-lap-number="2"]')).toHaveCount(1);
 });
 
 test("primary panels do not overlap the persistent player", async ({ page }) => {
@@ -47,4 +50,81 @@ test("primary panels do not overlap the persistent player", async ({ page }) => 
   const stage = await page.locator(".video-stage").boundingBox();
   expect(player).not.toBeNull(); expect(stage).not.toBeNull();
   expect((stage?.y ?? 0) + (stage?.height ?? 0)).toBeLessThanOrEqual(player?.y ?? Number.MAX_VALUE);
+});
+
+test("sync diagnostics are opt-in and track the nearest telemetry sample", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/?session=demo");
+  await expect(page.getByRole("complementary", { name: "Synchronization diagnostics", exact: true })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Edit analysis" }).click();
+  await page.getByLabel("Show synchronization diagnostics").check();
+  await page.getByRole("button", { name: "CLOSE", exact: true }).click();
+
+  const diagnostics = page.getByRole("complementary", { name: "Synchronization diagnostics", exact: true });
+  await expect(diagnostics).toBeVisible();
+  await expect(diagnostics).toContainText("0.000–120.000 s");
+  await expect(diagnostics).toContainText("1.00 Hz");
+  await page.locator("video").evaluate((element) => {
+    Object.defineProperty(element, "currentTime", { configurable: true, value: 61.4 });
+    element.dispatchEvent(new Event("seeking"));
+  });
+  await expect(diagnostics).toContainText("61.400 s");
+  await expect(diagnostics).toContainText("61.000 s");
+  await expect(diagnostics).toContainText("+400.0 ms");
+  await page.getByRole("button", { name: "Close synchronization diagnostics" }).click();
+  await expect(diagnostics).toHaveCount(0);
+});
+
+test("missing telemetry renders as an em dash while zero remains numeric", async ({ page }) => {
+  await mockApi(page, { 5: null, 6: null, 7: 0, 9: 0 });
+  await page.goto("/?session=demo");
+
+  await expect(page.locator(".gauge").filter({ hasText: "SPEED" }).locator("strong")).toHaveText("—");
+  await expect(page.getByLabel("G-force unavailable")).toBeVisible();
+  await page.getByLabel("Toggle G-force display").click();
+  await expect(page.getByLabel("G-force meter")).toContainText(/LONG\s+—/);
+  await expect(page.getByLabel("G-force meter")).toContainText(/LAT\s+0\.00/);
+  await expect(page.locator(".gauge").filter({ hasText: "LAP" }).locator("strong")).toHaveText("0");
+  const chartReadout = page.locator(".plot-panel").getByLabel("Telemetry chart legend");
+  await expect(chartReadout).toContainText("Speed mph —");
+  await expect(chartReadout).toContainText("Lateral g 0.00");
+  await expect(chartReadout).toContainText("Longitudinal g —");
+});
+
+test("G-force display toggles between a vector and exact values", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/?session=demo");
+
+  const toggle = page.getByLabel("Toggle G-force display");
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByLabel("Lateral 0.40 g, longitudinal 0.10 g")).toBeVisible();
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByLabel("G-force meter")).toContainText(/LAT\s+0\.40/);
+  await expect(page.getByLabel("G-force meter")).toContainText(/LONG\s+0\.10/);
+});
+
+test("telemetry chart uses independent speed and acceleration scales", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/?session=demo");
+
+  const chart = page.locator(".plot-panel > .telemetry-chart");
+  await expect(chart).toHaveAttribute("data-scales", "speed acceleration");
+  await expect(chart.locator('[data-scale="speed"]')).toContainText("Speed mph");
+  await expect(chart.locator('[data-scale="acceleration"]')).toHaveCount(2);
+});
+
+test("desktop review panels resize with accessible splitters", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Desktop grid splitters collapse into stacked mobile panels");
+  await mockApi(page);
+  await page.goto("/?session=demo");
+
+  const stage = page.locator(".video-stage");
+  const initial = await stage.boundingBox();
+  await page.getByRole("separator", { name: "Resize track and video panels" }).press("ArrowLeft");
+  await page.getByRole("separator", { name: "Resize video and telemetry panels" }).press("ArrowUp");
+  const resized = await stage.boundingBox();
+  expect(resized?.width ?? 0).toBeLessThan(initial?.width ?? 0);
+  expect(resized?.height ?? 0).toBeLessThan(initial?.height ?? 0);
 });

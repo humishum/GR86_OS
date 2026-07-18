@@ -109,6 +109,8 @@ def test_proxy_profile_is_browser_compatible(tmp_path: Path) -> None:
     assert "cuda" in cuda
     assert "scale_cuda=-2:1080:interp_algo=lanczos" in cuda
     assert "h264_nvenc" in cuda
+    assert "-vsync" in cuda
+    assert "-fps_mode" not in cuda
     assert "libx264" not in cuda
 
 

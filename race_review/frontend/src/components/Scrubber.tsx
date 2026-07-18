@@ -12,6 +12,15 @@ type Props = {
 
 export function Scrubber({ time, duration, chapters, laps, corners, onSeek }: Props) {
   const percent = duration ? (time / duration) * 100 : 0;
+  const lapLength = Math.max(...corners.map((corner) => corner.end_distance_m), 1);
+  const cornerMarkers = laps
+    .filter((lap) => lap.complete && !lap.excluded)
+    .flatMap((lap) => corners.map((corner) => ({
+      corner,
+      lap,
+      time: lap.start_seconds + (corner.apex_distance_m / lapLength) * lap.lap_time_seconds,
+    })));
+
   return (
     <div className="scrubber">
       <span>{formatTime(time)}</span>
@@ -32,12 +41,15 @@ export function Scrubber({ time, duration, chapters, laps, corners, onSeek }: Pr
         {laps.map((lap) => (
           <i key={lap.lap_number} className="marker marker--lap" style={{ left: `${(lap.start_seconds / duration) * 100}%` }} title={`Lap ${lap.lap_number}`} />
         ))}
-        {corners.map((corner) => {
-          const lap = laps.find((item) => item.complete && !item.excluded);
-          const lapLength = Math.max(...corners.map((item) => item.end_distance_m), 1);
-          const cornerTime = lap ? lap.start_seconds + (corner.apex_distance_m / lapLength) * lap.lap_time_seconds : 0;
-          return <i key={corner.corner_id} className="marker marker--corner" style={{ left: `${(cornerTime / duration) * 100}%` }} title={corner.name} />;
-        })}
+        {cornerMarkers.map(({ corner, lap, time: cornerTime }) => (
+          <i
+            key={`${lap.lap_number}-${corner.corner_id}`}
+            className="marker marker--corner"
+            data-lap-number={lap.lap_number}
+            style={{ left: `${(cornerTime / duration) * 100}%` }}
+            title={`${corner.name} · Lap ${lap.lap_number}`}
+          />
+        ))}
       </div>
       <span>{formatTime(duration)}</span>
     </div>

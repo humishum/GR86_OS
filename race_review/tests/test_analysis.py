@@ -11,7 +11,9 @@ from race_review.analysis import (
     build_laps,
     build_reference_centerline,
     derive_kinematics,
+    detect_corners,
     filter_gps,
+    infer_start_finish,
     line_crossings,
     project_laps_to_centerline,
     project_wgs84_to_enu,
@@ -96,6 +98,63 @@ def test_directional_laps_and_incomplete_boundaries() -> None:
 
     reverse = config.model_copy(update={"crossing_direction": -1})
     assert line_crossings(frame, reverse) == []
+
+
+def test_inferred_gate_is_refined_on_the_driven_line() -> None:
+    frame = prepared_session()
+    config = infer_start_finish(frame, minimum_lap_seconds=20)
+    assert config.start_finish_a is not None
+    assert config.start_finish_b is not None
+    center = np.array(
+        [
+            (config.start_finish_a.east_m + config.start_finish_b.east_m) / 2,
+            (config.start_finish_a.north_m + config.start_finish_b.north_m) / 2,
+        ]
+    )
+    driven = frame.loc[frame["valid"], ["east_smooth_m", "north_smooth_m"]].to_numpy()
+    assert np.min(np.linalg.norm(driven - center, axis=1)) < 2.0
+    assert len(line_crossings(frame, config)) >= 3
+
+
+def test_corner_consensus_rejects_a_single_lap_gps_spike() -> None:
+    parts = []
+    for lap_number in (1, 2, 3):
+        distance = np.arange(0.0, 600.0, 6.0)
+        curvature = np.zeros_like(distance)
+        curvature[(distance >= 90) & (distance <= 168)] = 0.012
+        curvature[(distance >= 330) & (distance <= 414)] = -0.011
+        if lap_number == 1:
+            curvature[(distance >= 228) & (distance <= 270)] = 0.020
+        lateral = curvature * 20.0**2
+        parts.append(
+            pd.DataFrame(
+                {
+                    "timestamp": (lap_number - 1) * 60 + distance / 10,
+                    "valid": True,
+                    "lap_number": lap_number,
+                    "lap_distance_m": distance,
+                    "distance_m": distance,
+                    "curvature_1pm": curvature,
+                    "lateral_accel_mps2": lateral,
+                    "lateral_g": lateral / 9.80665,
+                    "speed_mps": 20.0,
+                    "longitudinal_accel_mps2": 0.0,
+                    "braking_mps2": 0.0,
+                }
+            )
+        )
+    frame = pd.concat(parts, ignore_index=True)
+    corners = detect_corners(frame)
+    assert len(corners) == 2
+    assert [(corner.start_distance_m, corner.end_distance_m) for corner in corners] == [
+        (90.0, 168.0),
+        (330.0, 414.0),
+    ]
+
+    # When processing explicitly says there are no complete laps, the detector
+    # falls back to one lap instead of joining reset distances across lap edges.
+    no_complete = frame.assign(lap_complete=False, lap_excluded=True)
+    assert len(detect_corners(no_complete)) == 3
 
 
 def test_corner_edit_rename_split_and_merge() -> None:

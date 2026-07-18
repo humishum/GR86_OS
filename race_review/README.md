@@ -32,6 +32,12 @@ npm install
 npm run dev
 ```
 
+Or start both development servers together and stop both with `Ctrl+C`:
+
+```bash
+./dev.sh
+```
+
 Vite serves the UI at `http://127.0.0.1:5173` and proxies API calls to FastAPI. For a single production-style process, run `npm run build` first; FastAPI serves the resulting `frontend/dist` at `http://127.0.0.1:8000`.
 
 By default the only browsable media root is the repository's `data/` directory. Configure one or more trusted roots with an OS-path-separator-delimited environment variable:
@@ -81,7 +87,15 @@ The `TrackGeometryAdapter` schema intentionally stops at WGS84 plus right-handed
 
 ```bash
 uv run pytest
-cd frontend && npm run build
+cd frontend
+npm run build
+npm run test:e2e
 ```
 
-The 4 GB sample integration test is opt-in via `RACE_REVIEW_GOPRO_SAMPLE`; normal tests do not transcode it.
+Playwright generates its four-second H.264 fixture with FFmpeg before the suite. Use
+`npm run test:rendering` for the focused real-playback, map, chart, gauge, and scrubber
+regression. Failed browser tests retain a screenshot, video, and trace below
+`frontend/test-results/`.
+
+The 4 GB sample integration test is opt-in via `RACE_REVIEW_GOPRO_SAMPLE`; normal tests do
+not transcode it.

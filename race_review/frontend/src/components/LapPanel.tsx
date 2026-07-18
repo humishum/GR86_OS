@@ -24,7 +24,7 @@ export function LapPanel({ sessionId, laps, onSeek }: { sessionId: string; laps:
         {laps.map((lap) => (
           <button key={lap.lap_number} className="lap-row" onClick={() => onSeek(lap.start_seconds)}>
             <strong>{lap.complete ? lap.lap_number : "—"}</strong><span>{formatTime(lap.lap_time_seconds)}{lap.complete ? "" : " partial"}</span>
-            <span>{mph(lap.maximum_speed_mps).toFixed(0)} mph</span>
+            <span>{mph(lap.maximum_speed_mps)?.toFixed(0) ?? "—"} mph</span>
           </button>
         ))}
       </div>
