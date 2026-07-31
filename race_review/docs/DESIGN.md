@@ -84,15 +84,18 @@ only representation of a critical state.
 ## Video and controls
 
 - Click/tap the video or transport control to toggle playback.
-- The proxy is letterboxed with `object-fit: contain`; video content is never cropped.
+- A browser-compatible original chapter is preferred for one-chapter sessions; a source
+  loading error falls back to the compatibility proxy.
+- Multi-chapter sessions always use the proxy to preserve one continuous media clock.
+- Video is letterboxed with `object-fit: contain`; content is never cropped.
 - Playback rates range from 0.25× to 2×.
 - The scrubber displays current and total canonical time on desktop.
 - Chapter boundaries, lap crossings, and corners have distinct timeline markers.
 - Two-second proxy keyframes balance seek latency and output efficiency.
 
-Planned keyboard and frame-step controls are listed in the roadmap. The current play
-icon derives from video state during clock updates; a dedicated playback-state event
-model is still desirable.
+Comma/period step one proxy frame; bracket keys navigate laps; semicolon/quote navigate
+corner events; transport buttons expose adjacent frames and events. Play, pause, and
+ended media events update transport icons independently of telemetry renders.
 
 ## Gauges
 
@@ -105,21 +108,24 @@ The live overlay prioritizes:
 5. delta to the fastest complete, non-excluded reference lap.
 
 Values are interpolated at video time. Lap number remains discrete. Missing numeric
-values currently render as zero in some gauges; distinguishing unavailable data from a
-real zero is a planned reliability/clarity improvement.
+values render as an em dash so they cannot be confused with a measured zero.
 
 ## Route view
 
 MapLibre renders a local GeoJSON style with no external dependency:
 
-- route lines are grouped and colored by lap number;
+- route lines retain a ground reference while GoPro GPS altitude forms an elevated
+  cyan/amber/red ribbon;
 - start/finish and detected corners are separate layers;
 - the current position is a high-contrast marker updated without rebuilding the map;
 - initial bounds contain the complete route;
 - optional raster tiles may be configured locally.
 
-The current map is north-up and full-route. Follow/ego camera modes, heading rotation,
-and selectable lap isolation are roadmap work.
+The route opens in a pitched 3D camera and supports pan, rotation/tilt, full-route reset,
+a top-down view, and explicit 1×/3× vertical exaggeration. Follow/ego camera modes,
+heading-up rotation, and selectable lap isolation remain roadmap work. A
+software-projected elevation route replaces the canvas if WebGL initialization fails so
+other review surfaces remain available.
 
 ## Telemetry charts
 
@@ -167,8 +173,9 @@ Import progress is stage-based and persistent. Proxy progress includes FFmpeg ou
 time, speed, and an ETA. The completed analysis manifest is checkpointed before proxy
 generation so a long encode does not make prior work appear missing.
 
-Failed imports show the persisted error. More actionable diagnostics, retry controls,
-and cancel/restart behavior are still planned.
+Failed imports show the persisted error and structured stage attempt. The processing
+screen exposes retry and cancel actions, while ready sessions expose an explicit proxy
+rebuild. Valid version-matched analysis artifacts are reused on retry.
 
 ## Accessibility baseline
 

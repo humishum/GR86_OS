@@ -1,11 +1,19 @@
-import { useState } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { api } from "../api";
-import type { Calibration, CornerSummary, SessionManifest, TrackConfig } from "../types";
+import type { Calibration, CornerSummary, DisplayUnits, SessionManifest, TrackConfig } from "../types";
+import { ActionableError, errorMessage } from "./ActionableError";
+import { UnitSelector } from "./UnitSelector";
 
 export function EditPanel({ session, corners, onSaved, showDiagnostics, onShowDiagnosticsChange }: { session: SessionManifest; corners: CornerSummary[]; onSaved: () => void; showDiagnostics: boolean; onShowDiagnosticsChange: (show: boolean) => void }) {
   const [open, setOpen] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const dialog = useRef<HTMLElement>(null);
+  const closeButton = useRef<HTMLButtonElement>(null);
+  const wasOpen = useRef(false);
+  const headingId = useId();
   const [track, setTrack] = useState<TrackConfig>(session.edits.track);
   const [calibration, setCalibration] = useState<Calibration>(session.edits.calibration);
+  const [displayUnits, setDisplayUnits] = useState<DisplayUnits>(session.edits.display_units);
   const [cornerValues, setCornerValues] = useState(() => Object.fromEntries(corners.map((corner) => [corner.corner_id, {
     name: corner.name, start_distance_m: corner.start_distance_m,
     apex_distance_m: corner.apex_distance_m, end_distance_m: corner.end_distance_m,
@@ -14,12 +22,49 @@ export function EditPanel({ session, corners, onSaved, showDiagnostics, onShowDi
   const [mergeIds, setMergeIds] = useState<string[]>([]);
   const [tileUrl, setTileUrl] = useState(() => localStorage.getItem("race-review-map-tiles") ?? "");
   const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  useEffect(() => {
+    if (open) {
+      wasOpen.current = true;
+      const handle = requestAnimationFrame(() => closeButton.current?.focus());
+      return () => cancelAnimationFrame(handle);
+    }
+    if (wasOpen.current) {
+      wasOpen.current = false;
+      trigger.current?.focus();
+    }
+  }, [open]);
+  const close = () => setOpen(false);
+  const dialogKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      close();
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const focusable = [...(dialog.current?.querySelectorAll<HTMLElement>(
+      'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])',
+    ) ?? [])].filter((element) => !element.hidden);
+    if (!focusable.length) {
+      event.preventDefault();
+      return;
+    }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  };
   const coordinate = (end: "a" | "b", axis: "east_m" | "north_m", value: number) => setTrack((current) => ({
     ...current,
     [`start_finish_${end}`]: { ...(current[`start_finish_${end}`] ?? { east_m: 0, north_m: 0 }), [axis]: value },
   }));
   const save = async () => {
-    setBusy(true);
+    setBusy(true); setSaveError("");
     const edits = corners.filter((corner) => {
       const value = cornerValues[corner.corner_id];
       return value && (value.name !== corner.name || value.start_distance_m !== corner.start_distance_m || value.apex_distance_m !== corner.apex_distance_m || value.end_distance_m !== corner.end_distance_m);
@@ -27,17 +72,31 @@ export function EditPanel({ session, corners, onSaved, showDiagnostics, onShowDi
     try {
       await api.saveTrack(session.session_id, track);
       await api.saveCalibration(session.session_id, calibration);
+      await api.saveDisplayUnits(session.session_id, displayUnits);
       if (edits.length || cornerActions.length) await api.saveCorners(session.session_id, [...edits, ...cornerActions]);
+      localStorage.setItem("race-review-units", JSON.stringify(displayUnits));
       if (tileUrl) localStorage.setItem("race-review-map-tiles", tileUrl);
       else localStorage.removeItem("race-review-map-tiles");
-      setOpen(false); onSaved();
+      close(); onSaved();
+    } catch (reason) {
+      setSaveError(errorMessage(reason, "Could not save analysis changes."));
     } finally { setBusy(false); }
   };
   return <>
-    <button className="icon-button" onClick={() => setOpen(true)} aria-label="Edit analysis">TUNE</button>
-    {open && <div className="drawer-backdrop" onClick={() => setOpen(false)}><aside className="edit-drawer" onClick={(event) => event.stopPropagation()}>
-      <div className="section-heading"><h2>Analysis setup</h2><button className="icon-button" onClick={() => setOpen(false)}>CLOSE</button></div>
+    <button ref={trigger} className="icon-button" onClick={() => setOpen(true)} aria-label="Edit analysis">TUNE</button>
+    {open && <div className="drawer-backdrop" onClick={close}><aside
+      ref={dialog}
+      className="edit-drawer"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={headingId}
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={dialogKeyDown}
+    >
+      <div className="section-heading"><h2 id={headingId}>Analysis setup</h2><button ref={closeButton} className="icon-button" onClick={close}>CLOSE</button></div>
       <p className="muted">Stored calculations remain SI. Overrides are deterministic and survive reprocessing.</p>
+      <h3>Display units</h3>
+      <UnitSelector value={displayUnits} onChange={setDisplayUnits} />
       <h3>Diagnostics</h3>
       <label className="check-field"><input type="checkbox" checked={showDiagnostics} onChange={(event) => onShowDiagnosticsChange(event.target.checked)} /> Show synchronization diagnostics</label>
       <label className="field">Optional MapLibre raster tile template<input value={tileUrl} onChange={(event) => setTileUrl(event.target.value)} placeholder="https://…/{z}/{x}/{y}.png" /></label>
@@ -62,6 +121,12 @@ export function EditPanel({ session, corners, onSaved, showDiagnostics, onShowDi
         <button className="secondary" onClick={() => setCornerActions([...cornerActions, { action: "split", corner_id: corner.corner_id, boundary_distance_m: cornerValues[corner.corner_id]?.apex_distance_m ?? corner.apex_distance_m }])}>Split at apex</button>
       </div>)}
       <button className="secondary" disabled={mergeIds.length < 2} onClick={() => { setCornerActions([...cornerActions, { action: "merge", corner_ids: mergeIds, merged_id: `merged-${mergeIds.join("-")}` }]); setMergeIds([]); }}>Merge selected</button>
+      {saveError && <ActionableError
+        compact
+        title="Could not save analysis changes"
+        message={saveError}
+        primaryAction={{ label: "Try save again", onClick: () => void save(), disabled: busy }}
+      />}
       <button className="primary" disabled={busy} onClick={save}>{busy ? "Reanalyzing…" : "Save and reanalyze"}</button>
     </aside></div>}
   </>;

@@ -94,18 +94,30 @@ class Calibration(BaseModel):
     diagnostics: dict[str, Any] = Field(default_factory=dict)
 
 
+class DisplayUnits(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    speed: Literal["mph", "km/h"] = "mph"
+    acceleration: Literal["g", "m/s²"] = "g"
+    distance: Literal["ft", "m"] = "ft"
+    time: Literal["s"] = "s"
+
+
 class UserEdits(BaseModel):
     track: TrackConfig = Field(default_factory=TrackConfig)
     calibration: Calibration = Field(default_factory=Calibration)
     corner_edits: list[dict[str, Any]] = Field(default_factory=list)
-    display_units: dict[str, str] = Field(
-        default_factory=lambda: {
-            "speed": "mph",
-            "acceleration": "g",
-            "distance": "ft",
-            "time": "s",
-        }
-    )
+    display_units: DisplayUnits = Field(default_factory=DisplayUnits)
+
+
+class ProcessingStage(BaseModel):
+    attempt: int
+    status: Literal["running", "completed", "failed", "cancelled"]
+    started_at: datetime
+    ended_at: datetime | None = None
+    backend: str | None = None
+    command_profile: str
+    failure_diagnostics: dict[str, Any] = Field(default_factory=dict)
 
 
 class SessionManifest(BaseModel):
@@ -123,6 +135,7 @@ class SessionManifest(BaseModel):
     coordinate_origin: CoordinateOrigin | None = None
     processing_versions: dict[str, str]
     processing_options: dict[str, bool] = Field(default_factory=lambda: {"generate_proxy": True})
+    processing_stages: dict[str, list[ProcessingStage]] = Field(default_factory=dict)
     edits: UserEdits = Field(default_factory=UserEdits)
     artifacts: dict[str, str] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
@@ -137,6 +150,11 @@ class ImportRequest(BaseModel):
 class ImportResponse(BaseModel):
     session_id: str
     status: str
+
+
+class SourceRelocationRequest(BaseModel):
+    chapter_index: int = Field(ge=0)
+    path: str
 
 
 class JobStatus(BaseModel):

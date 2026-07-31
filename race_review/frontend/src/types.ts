@@ -6,6 +6,7 @@ export type ApiPaths = paths;
 export type SourceFingerprint = Schema<"SourceFingerprint">;
 export type ChapterManifest = Schema<"ChapterManifest">;
 export type TrackConfig = Schema<"TrackConfig">;
+export type DisplayUnits = Schema<"DisplayUnits">;
 export type Calibration = Omit<Schema<"Calibration">, "transform" | "diagnostics"> & {
   transform: Schema<"AxisTransform">;
   diagnostics: Record<string, unknown>;
@@ -20,7 +21,7 @@ export type SessionManifest = Omit<
     track: TrackConfig;
     calibration: Calibration;
     corner_edits: Array<Record<string, unknown>>;
-    display_units: Record<string, string>;
+    display_units: DisplayUnits;
   };
   artifacts: Record<string, string>;
   warnings: string[];

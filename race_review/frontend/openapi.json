@@ -210,6 +210,172 @@
         }
       }
     },
+    "/api/sessions/{session_id}/relocate-source": {
+      "post": {
+        "summary": "Relocate Source",
+        "operationId": "relocate_source_api_sessions__session_id__relocate_source_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceRelocationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionManifest"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}/retry": {
+      "post": {
+        "summary": "Retry Import",
+        "operationId": "retry_import_api_sessions__session_id__retry_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}/cancel": {
+      "post": {
+        "summary": "Cancel Import",
+        "operationId": "cancel_import_api_sessions__session_id__cancel_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}/media/proxy/rebuild": {
+      "post": {
+        "summary": "Rebuild Proxy",
+        "operationId": "rebuild_proxy_api_sessions__session_id__media_proxy_rebuild_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/sessions/{session_id}/telemetry": {
       "get": {
         "summary": "Telemetry",
@@ -661,6 +827,55 @@
         }
       }
     },
+    "/api/sessions/{session_id}/display-units": {
+      "put": {
+        "summary": "Update Display Units",
+        "operationId": "update_display_units_api_sessions__session_id__display_units_put",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisplayUnits"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionManifest"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/sessions/{session_id}/reanalyze": {
       "post": {
         "summary": "Reanalyze",
@@ -704,6 +919,43 @@
       "get": {
         "summary": "Proxy Media",
         "operationId": "proxy_media_api_sessions__session_id__media_proxy_get",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}/media/source": {
+      "get": {
+        "summary": "Source Media",
+        "operationId": "source_media_api_sessions__session_id__media_source_get",
         "parameters": [
           {
             "name": "session_id",
@@ -1281,6 +1533,46 @@
         ],
         "title": "CornerSummary"
       },
+      "DisplayUnits": {
+        "properties": {
+          "speed": {
+            "type": "string",
+            "enum": [
+              "mph",
+              "km/h"
+            ],
+            "title": "Speed",
+            "default": "mph"
+          },
+          "acceleration": {
+            "type": "string",
+            "enum": [
+              "g",
+              "m/s\u00b2"
+            ],
+            "title": "Acceleration",
+            "default": "g"
+          },
+          "distance": {
+            "type": "string",
+            "enum": [
+              "ft",
+              "m"
+            ],
+            "title": "Distance",
+            "default": "ft"
+          },
+          "time": {
+            "type": "string",
+            "const": "s",
+            "title": "Time",
+            "default": "s"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "DisplayUnits"
+      },
       "ENUPoint": {
         "properties": {
           "east_m": {
@@ -1655,6 +1947,69 @@
         ],
         "title": "MediaStream"
       },
+      "ProcessingStage": {
+        "properties": {
+          "attempt": {
+            "type": "integer",
+            "title": "Attempt"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "completed",
+              "failed",
+              "cancelled"
+            ],
+            "title": "Status"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "backend": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backend"
+          },
+          "command_profile": {
+            "type": "string",
+            "title": "Command Profile"
+          },
+          "failure_diagnostics": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Failure Diagnostics"
+          }
+        },
+        "type": "object",
+        "required": [
+          "attempt",
+          "status",
+          "started_at",
+          "command_profile"
+        ],
+        "title": "ProcessingStage"
+      },
       "SessionManifest": {
         "properties": {
           "schema_version": {
@@ -1727,6 +2082,16 @@
             "type": "object",
             "title": "Processing Options"
           },
+          "processing_stages": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/ProcessingStage"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Processing Stages"
+          },
           "edits": {
             "$ref": "#/components/schemas/UserEdits"
           },
@@ -1786,6 +2151,25 @@
           "sha256"
         ],
         "title": "SourceFingerprint"
+      },
+      "SourceRelocationRequest": {
+        "properties": {
+          "chapter_index": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Chapter Index"
+          },
+          "path": {
+            "type": "string",
+            "title": "Path"
+          }
+        },
+        "type": "object",
+        "required": [
+          "chapter_index",
+          "path"
+        ],
+        "title": "SourceRelocationRequest"
       },
       "StreamQualitySummary": {
         "properties": {
@@ -2021,11 +2405,7 @@
             "title": "Corner Edits"
           },
           "display_units": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object",
-            "title": "Display Units"
+            "$ref": "#/components/schemas/DisplayUnits"
           }
         },
         "type": "object",

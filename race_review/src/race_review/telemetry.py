@@ -12,6 +12,8 @@ from .storage import write_parquet
 
 logger = logging.getLogger(__name__)
 
+GOPROPY_VERSION = "0.1.1"
+GOPROPY_REVISION = "082d65bfb2e0629c3dc46c5f83d6208e661a8ca7"
 
 AXES = {
     "GPS5": ["lat", "lon", "alt", "speed_2d", "speed_3d"],
@@ -33,7 +35,7 @@ def _stream_frame(name: str, stream: Any, chapter_index: int, offset: float) -> 
     except TypeError as exc:
         raise RuntimeError(
             "gopropy does not provide the required quality-aware DataFrame API; "
-            "install revision 3040b2f4efc8624e24c0962289eabb25f6a26c7b"
+            f"install version {GOPROPY_VERSION} at revision {GOPROPY_REVISION}"
         ) from exc
     frame = frame.copy()
     frame["timestamp"] = pd.to_numeric(frame["timestamp"], errors="coerce") + offset
@@ -51,6 +53,11 @@ def extract_chapters(
         import gopropy
     except ImportError as exc:
         raise RuntimeError("Pinned gopropy dependency is not installed") from exc
+    if getattr(gopropy, "__version__", None) != GOPROPY_VERSION:
+        raise RuntimeError(
+            f"Expected gopropy {GOPROPY_VERSION}, found "
+            f"{getattr(gopropy, '__version__', 'unknown')}"
+        )
 
     accumulated: dict[str, list[pd.DataFrame]] = {}
     quality_inputs: dict[str, list[dict[str, Any]]] = {}

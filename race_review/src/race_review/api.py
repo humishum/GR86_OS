@@ -23,6 +23,7 @@ from .models import (
     Calibration,
     CornerEdit,
     CornerSummary,
+    DisplayUnits,
     ENUPoint,
     ImportRequest,
     ImportResponse,
@@ -30,6 +31,7 @@ from .models import (
     LapSummary,
     MediaEntry,
     SessionManifest,
+    SourceRelocationRequest,
     TelemetryWindow,
     TrackConfig,
     TrackGeometryAdapter,
@@ -201,6 +203,47 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         manifest_or_404(session_id)
         return catalog.get_job(session_id)
 
+    @app.post("/api/sessions/{session_id}/relocate-source", response_model=SessionManifest)
+    async def relocate_source(
+        session_id: str, payload: SourceRelocationRequest
+    ) -> SessionManifest:
+        manifest_or_404(session_id)
+        try:
+            return importer.relocate_source(session_id, payload.chapter_index, payload.path)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @app.post("/api/sessions/{session_id}/retry", response_model=ImportResponse, status_code=202)
+    async def retry_import(session_id: str) -> ImportResponse:
+        manifest_or_404(session_id)
+        try:
+            manifest = importer.retry(session_id)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return ImportResponse(session_id=session_id, status=manifest.status)
+
+    @app.post("/api/sessions/{session_id}/cancel", response_model=ImportResponse, status_code=202)
+    async def cancel_import(session_id: str) -> ImportResponse:
+        manifest_or_404(session_id)
+        try:
+            manifest = importer.cancel(session_id)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return ImportResponse(session_id=session_id, status=manifest.status)
+
+    @app.post(
+        "/api/sessions/{session_id}/media/proxy/rebuild",
+        response_model=ImportResponse,
+        status_code=202,
+    )
+    async def rebuild_proxy(session_id: str) -> ImportResponse:
+        manifest_or_404(session_id)
+        try:
+            manifest = importer.rebuild_proxy(session_id)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return ImportResponse(session_id=session_id, status=manifest.status)
+
     @app.get("/api/sessions/{session_id}/telemetry", response_model=TelemetryWindow)
     async def telemetry(
         session_id: str,
@@ -222,8 +265,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "timestamp",
             "latitude",
             "longitude",
+            "altitude_m",
             "east_smooth_m",
             "north_smooth_m",
+            "up_smooth_m",
             "speed_mps",
             "longitudinal_g",
             "lateral_g",
@@ -334,6 +379,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         importer._save(manifest)
         return manifest
 
+    @app.put("/api/sessions/{session_id}/display-units", response_model=SessionManifest)
+    async def update_display_units(
+        session_id: str, display_units: DisplayUnits
+    ) -> SessionManifest:
+        manifest = manifest_or_404(session_id)
+        manifest.edits.display_units = display_units
+        catalog.save_edit(
+            session_id, "display_units", display_units.model_dump(mode="json")
+        )
+        catalog.save_manifest(manifest)
+        importer._save(manifest)
+        return manifest
+
     @app.put("/api/sessions/{session_id}/corners", response_model=list[CornerSummary])
     async def update_corners(session_id: str, edits: list[CornerEdit]) -> list[CornerSummary]:
         manifest = manifest_or_404(session_id)
@@ -358,6 +416,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         path = _session_file(settings, session_id, relative)
         if not path.is_file():
             raise HTTPException(404, "Proxy artifact is missing")
+        return _range_response(path, request, "video/mp4")
+
+    @app.get("/api/sessions/{session_id}/media/source")
+    async def source_media(session_id: str, request: Request) -> StreamingResponse:
+        manifest = manifest_or_404(session_id)
+        if len(manifest.chapters) != 1:
+            raise HTTPException(
+                409, "Direct source playback is only available for one-chapter sessions"
+            )
+        chapter = manifest.chapters[0]
+        if not source_is_current(chapter.fingerprint):
+            raise HTTPException(409, "Source media is missing or has changed since import")
+        try:
+            path = settings.resolve_media(chapter.fingerprint.path)
+        except ValueError as exc:
+            raise HTTPException(403, "Source media is outside configured media roots") from exc
         return _range_response(path, request, "video/mp4")
 
     @app.get("/api/sessions/{session_id}/thumbnail")

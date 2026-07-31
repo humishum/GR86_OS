@@ -106,6 +106,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sessions/{session_id}/relocate-source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Relocate Source */
+        post: operations["relocate_source_api_sessions__session_id__relocate_source_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{session_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Import */
+        post: operations["retry_import_api_sessions__session_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{session_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Import */
+        post: operations["cancel_import_api_sessions__session_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{session_id}/media/proxy/rebuild": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rebuild Proxy */
+        post: operations["rebuild_proxy_api_sessions__session_id__media_proxy_rebuild_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sessions/{session_id}/telemetry": {
         parameters: {
             query?: never;
@@ -226,6 +294,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sessions/{session_id}/display-units": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Display Units */
+        put: operations["update_display_units_api_sessions__session_id__display_units_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sessions/{session_id}/reanalyze": {
         parameters: {
             query?: never;
@@ -252,6 +337,23 @@ export interface paths {
         };
         /** Proxy Media */
         get: operations["proxy_media_api_sessions__session_id__media_proxy_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{session_id}/media/source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Source Media */
+        get: operations["source_media_api_sessions__session_id__media_source_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -457,6 +559,33 @@ export interface components {
             /** Exit Acceleration Mps2 */
             exit_acceleration_mps2?: number | null;
         };
+        /** DisplayUnits */
+        DisplayUnits: {
+            /**
+             * Speed
+             * @default mph
+             * @enum {string}
+             */
+            speed: "mph" | "km/h";
+            /**
+             * Acceleration
+             * @default g
+             * @enum {string}
+             */
+            acceleration: "g" | "m/s²";
+            /**
+             * Distance
+             * @default ft
+             * @enum {string}
+             */
+            distance: "ft" | "m";
+            /**
+             * Time
+             * @default s
+             * @constant
+             */
+            time: "s";
+        };
         /** ENUPoint */
         ENUPoint: {
             /** East M */
@@ -583,6 +712,31 @@ export interface components {
             /** Height */
             height?: number | null;
         };
+        /** ProcessingStage */
+        ProcessingStage: {
+            /** Attempt */
+            attempt: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "running" | "completed" | "failed" | "cancelled";
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Ended At */
+            ended_at?: string | null;
+            /** Backend */
+            backend?: string | null;
+            /** Command Profile */
+            command_profile: string;
+            /** Failure Diagnostics */
+            failure_diagnostics?: {
+                [key: string]: unknown;
+            };
+        };
         /** SessionManifest */
         SessionManifest: {
             /**
@@ -622,6 +776,10 @@ export interface components {
             processing_options?: {
                 [key: string]: boolean;
             };
+            /** Processing Stages */
+            processing_stages?: {
+                [key: string]: components["schemas"]["ProcessingStage"][];
+            };
             edits?: components["schemas"]["UserEdits"];
             /** Artifacts */
             artifacts?: {
@@ -640,6 +798,13 @@ export interface components {
             modified_ns: number;
             /** Sha256 */
             sha256: string;
+        };
+        /** SourceRelocationRequest */
+        SourceRelocationRequest: {
+            /** Chapter Index */
+            chapter_index: number;
+            /** Path */
+            path: string;
         };
         /** StreamQualitySummary */
         StreamQualitySummary: {
@@ -741,10 +906,7 @@ export interface components {
             corner_edits?: {
                 [key: string]: unknown;
             }[];
-            /** Display Units */
-            display_units?: {
-                [key: string]: string;
-            };
+            display_units?: components["schemas"]["DisplayUnits"];
         };
         /** ValidationError */
         ValidationError: {
@@ -928,6 +1090,134 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["JobStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    relocate_source_api_sessions__session_id__relocate_source_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourceRelocationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionManifest"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_import_api_sessions__session_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_import_api_sessions__session_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rebuild_proxy_api_sessions__session_id__media_proxy_rebuild_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportResponse"];
                 };
             };
             /** @description Validation Error */
@@ -1212,6 +1502,41 @@ export interface operations {
             };
         };
     };
+    update_display_units_api_sessions__session_id__display_units_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DisplayUnits"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionManifest"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     reanalyze_api_sessions__session_id__reanalyze_post: {
         parameters: {
             query?: never;
@@ -1244,6 +1569,37 @@ export interface operations {
         };
     };
     proxy_media_api_sessions__session_id__media_proxy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    source_media_api_sessions__session_id__media_source_get: {
         parameters: {
             query?: never;
             header?: never;

@@ -1,5 +1,5 @@
 import type { ChapterManifest, CornerSummary, LapSummary } from "../types";
-import { formatTime } from "../telemetry";
+import { formatTime, telemetryNumber, type TelemetrySample } from "../telemetry";
 
 type Props = {
   time: number;
@@ -7,19 +7,40 @@ type Props = {
   chapters: ChapterManifest[];
   laps: LapSummary[];
   corners: CornerSummary[];
+  samples: TelemetrySample[];
   onSeek: (seconds: number) => void;
 };
 
-export function Scrubber({ time, duration, chapters, laps, corners, onSeek }: Props) {
+function crossingTime(samples: TelemetrySample[], distance: number) {
+  for (let index = 1; index < samples.length; index += 1) {
+    const beforeDistance = telemetryNumber(samples[index - 1].lap_distance_m);
+    const afterDistance = telemetryNumber(samples[index].lap_distance_m);
+    const beforeTime = telemetryNumber(samples[index - 1].timestamp);
+    const afterTime = telemetryNumber(samples[index].timestamp);
+    if (beforeDistance == null || afterDistance == null || beforeTime == null || afterTime == null) continue;
+    if ((distance - beforeDistance) * (distance - afterDistance) > 0) continue;
+    if (afterDistance === beforeDistance) return beforeTime;
+    return beforeTime + ((distance - beforeDistance) / (afterDistance - beforeDistance)) * (afterTime - beforeTime);
+  }
+  return null;
+}
+
+export function Scrubber({ time, duration, chapters, laps, corners, samples, onSeek }: Props) {
   const percent = duration ? (time / duration) * 100 : 0;
   const lapLength = Math.max(...corners.map((corner) => corner.end_distance_m), 1);
   const cornerMarkers = laps
-    .filter((lap) => lap.complete && !lap.excluded)
-    .flatMap((lap) => corners.map((corner) => ({
-      corner,
-      lap,
-      time: lap.start_seconds + (corner.apex_distance_m / lapLength) * lap.lap_time_seconds,
-    })));
+    .flatMap((lap) => {
+      const lapSamples = samples.filter((sample) => {
+        const sampleTime = telemetryNumber(sample.timestamp);
+        return Number(sample.lap_number) === lap.lap_number && sampleTime != null && sampleTime >= lap.start_seconds && sampleTime <= lap.end_seconds;
+      });
+      return corners.flatMap((corner) => {
+        const measuredTime = crossingTime(lapSamples, corner.apex_distance_m);
+        if (measuredTime != null) return [{ corner, lap, time: measuredTime }];
+        if (!lap.complete) return [];
+        return [{ corner, lap, time: lap.start_seconds + (corner.apex_distance_m / lapLength) * lap.lap_time_seconds }];
+      });
+    });
 
   return (
     <div className="scrubber">

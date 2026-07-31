@@ -124,6 +124,21 @@ class Catalog:
             )
             if cursor.rowcount != 1:
                 raise KeyError(manifest.session_id)
+            connection.execute("DELETE FROM chapters WHERE session_id=?", (manifest.session_id,))
+            connection.executemany(
+                "INSERT INTO chapters VALUES (?, ?, ?, ?, ?, ?)",
+                [
+                    (
+                        manifest.session_id,
+                        chapter.index,
+                        chapter.fingerprint.path,
+                        chapter.fingerprint.size_bytes,
+                        chapter.fingerprint.modified_ns,
+                        chapter.fingerprint.sha256,
+                    )
+                    for chapter in manifest.chapters
+                ],
+            )
 
     def get_manifest(self, session_id: str) -> SessionManifest:
         with self.connect() as connection:

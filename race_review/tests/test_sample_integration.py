@@ -28,3 +28,12 @@ def test_hero10_sample_has_full_quality_timing() -> None:
     assert np.all(np.diff(acceleration.timestamps) > 0)
     assert gps.timestamps[-1] == pytest.approx(534.534, abs=0.2)
     assert getattr(gps, "valid_mask", (gps.metadata or {}).get("valid_mask")) is not None
+    gps_frame = gps.to_dataframe(
+        model_config=getattr(gps, "model_config", None), include_quality=True
+    )
+    assert {"gps_dop", "gps_dop_raw"}.issubset(gps_frame.columns)
+    assert np.allclose(
+        gps_frame["gps_dop"].to_numpy() * 100,
+        gps_frame["gps_dop_raw"].to_numpy(),
+        equal_nan=True,
+    )

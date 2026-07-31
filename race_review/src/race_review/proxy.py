@@ -13,23 +13,50 @@ from .models import SessionManifest
 from .storage import atomic_json
 
 PROXY_PROFILE = "h264-1080p60-aac-gop2s-v3"
+PROXY_CACHE_VERSION = 1
 logger = logging.getLogger(__name__)
 
 
-def proxy_cache_signature(manifest: SessionManifest) -> str:
-    return (
-        ":".join(chapter.fingerprint.sha256 for chapter in manifest.chapters) + ":" + PROXY_PROFILE
+class ProxyCancelled(RuntimeError):
+    pass
+
+
+def proxy_cache_signature(
+    manifest: SessionManifest,
+    *,
+    backend: str = "cpu",
+    profile: str = PROXY_PROFILE,
+    cache_version: int = PROXY_CACHE_VERSION,
+) -> str:
+    return ":".join(
+        [
+            *(chapter.fingerprint.sha256 for chapter in manifest.chapters),
+            profile,
+            backend,
+            f"cache-v{cache_version}",
+        ]
     )
 
 
-def proxy_is_current(output: Path, metadata: Path, manifest: SessionManifest) -> bool:
+def proxy_is_current(
+    output: Path,
+    metadata: Path,
+    manifest: SessionManifest,
+    *,
+    backend: str = "cpu",
+) -> bool:
     if not output.is_file() or output.stat().st_size == 0 or not metadata.is_file():
         return False
     try:
         value = json.loads(metadata.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return False
-    return value.get("signature") == proxy_cache_signature(manifest)
+    return (
+        value.get("signature") == proxy_cache_signature(manifest, backend=backend)
+        and value.get("profile", PROXY_PROFILE) == PROXY_PROFILE
+        and value.get("backend", backend) == backend
+        and value.get("cache_version", PROXY_CACHE_VERSION) == PROXY_CACHE_VERSION
+    )
 
 
 def build_proxy_command(
@@ -176,6 +203,7 @@ def _run_proxy_command(
     command: list[str],
     manifest: SessionManifest,
     on_progress: Callable[[float, float | None], None] | None,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> tuple[int, list[str]]:
     try:
         process = subprocess.Popen(
@@ -191,6 +219,10 @@ def _run_proxy_command(
     progress_values: dict[str, str] = {}
     if process.stdout is not None:
         for raw_line in process.stdout:
+            if should_cancel is not None and should_cancel():
+                process.terminate()
+                process.wait(timeout=10)
+                return 130, ["Proxy transcode cancelled"]
             line = raw_line.strip()
             if not line:
                 continue
@@ -226,11 +258,16 @@ def generate_proxy(
     settings: Settings,
     on_progress: Callable[[float, float | None], None] | None = None,
     on_backend: Callable[[str], None] | None = None,
+    should_cancel: Callable[[], bool] | None = None,
+    force: bool = False,
 ) -> tuple[Path, bool]:
     output = session_dir / "media" / "proxy.mp4"
     metadata = session_dir / "media" / "proxy.json"
     output.parent.mkdir(parents=True, exist_ok=True)
-    if proxy_is_current(output, metadata, manifest):
+    backend = select_proxy_backend(settings)
+    if on_backend is not None:
+        on_backend(backend)
+    if not force and proxy_is_current(output, metadata, manifest, backend=backend):
         return output, True
     concat_file = session_dir / "media" / "chapters.ffconcat"
     concat_file.write_text(
@@ -242,9 +279,7 @@ def generate_proxy(
         encoding="utf-8",
     )
     partial = output.with_suffix(".partial.mp4")
-    backend = select_proxy_backend(settings)
-    if on_backend is not None:
-        on_backend(backend)
+    partial.unlink(missing_ok=True)
     command = build_proxy_command(
         [Path(chapter.fingerprint.path) for chapter in manifest.chapters],
         concat_file,
@@ -252,9 +287,17 @@ def generate_proxy(
         settings,
         use_cuda=backend == "cuda",
     )
-    return_code, output_lines = _run_proxy_command(command, manifest, on_progress)
+    return_code, output_lines = _run_proxy_command(
+        command, manifest, on_progress, should_cancel
+    )
+    if return_code == 130 and should_cancel is not None and should_cancel():
+        partial.unlink(missing_ok=True)
+        raise ProxyCancelled("Proxy transcode cancelled")
     if return_code and backend == "cuda" and settings.proxy_acceleration == "auto":
         logger.warning("CUDA proxy transcode failed; retrying on CPU: %s", output_lines[-1:])
+        # FFmpeg may leave a valid-looking prefix behind. Never let the CPU
+        # retry append to, inspect, or promote CUDA's partial output.
+        partial.unlink(missing_ok=True)
         backend = "cpu"
         if on_backend is not None:
             on_backend(backend)
@@ -264,8 +307,14 @@ def generate_proxy(
             partial,
             settings,
         )
-        return_code, output_lines = _run_proxy_command(command, manifest, on_progress)
+        return_code, output_lines = _run_proxy_command(
+            command, manifest, on_progress, should_cancel
+        )
+        if return_code == 130 and should_cancel is not None and should_cancel():
+            partial.unlink(missing_ok=True)
+            raise ProxyCancelled("Proxy transcode cancelled")
     if return_code:
+        partial.unlink(missing_ok=True)
         detail = "\n".join(output_lines[-8:])
         raise RuntimeError(
             f"Proxy transcode failed with status {return_code}" + (f":\n{detail}" if detail else "")
@@ -278,7 +327,8 @@ def generate_proxy(
         {
             "profile": PROXY_PROFILE,
             "backend": backend,
-            "signature": proxy_cache_signature(manifest),
+            "cache_version": PROXY_CACHE_VERSION,
+            "signature": proxy_cache_signature(manifest, backend=backend),
             "source_sha256": [chapter.fingerprint.sha256 for chapter in manifest.chapters],
         },
     )

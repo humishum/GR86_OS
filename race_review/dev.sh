@@ -35,6 +35,7 @@ if [[ ! -d "$ROOT_DIR/frontend/node_modules" ]]; then
 fi
 
 export RACE_REVIEW_MEDIA_ROOTS="${RACE_REVIEW_MEDIA_ROOTS:-$ROOT_DIR/../data}"
+RACE_REVIEW_DEV_HOST="${RACE_REVIEW_DEV_HOST:-0.0.0.0}"
 
 (
   cd "$ROOT_DIR"
@@ -44,11 +45,17 @@ BACKEND_PID=$!
 
 (
   cd "$ROOT_DIR/frontend"
-  exec setsid npm run dev -- --host 127.0.0.1 --port 5173
+  exec setsid npm run dev -- --host "$RACE_REVIEW_DEV_HOST" --port 5173
 ) &
 FRONTEND_PID=$!
 
 printf 'Race Review: http://127.0.0.1:5173/\nAPI:         http://127.0.0.1:8000/\n'
+if command -v hostname >/dev/null 2>&1; then
+  LAN_ADDRESS="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  if [[ -n "$LAN_ADDRESS" ]]; then
+    printf 'LAN access:  http://%s:5173/\n' "$LAN_ADDRESS"
+  fi
+fi
 printf 'Press Ctrl+C to stop both servers.\n'
 
 set +e

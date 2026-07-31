@@ -16,7 +16,7 @@ class Settings:
     media_roots: tuple[Path, ...]
     ffmpeg: str = "ffmpeg"
     ffprobe: str = "ffprobe"
-    gps_error_limit_m: float = 5.0
+    gps_dop_limit: float = 5.0
     proxy_acceleration: str = "auto"
 
     @property
@@ -44,7 +44,12 @@ class Settings:
             media_roots=media_roots,
             ffmpeg=os.getenv("FFMPEG", "ffmpeg"),
             ffprobe=os.getenv("FFPROBE", "ffprobe"),
-            gps_error_limit_m=float(os.getenv("RACE_REVIEW_GPS_ERROR_LIMIT_M", "5")),
+            gps_dop_limit=float(
+                os.getenv(
+                    "RACE_REVIEW_GPS_DOP_LIMIT",
+                    os.getenv("RACE_REVIEW_GPS_ERROR_LIMIT_M", "5"),
+                )
+            ),
             proxy_acceleration=proxy_acceleration,
         )
 

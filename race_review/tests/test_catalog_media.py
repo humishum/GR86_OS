@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+import race_review.proxy as proxy_module
 from race_review.catalog import Catalog
 from race_review.config import Settings
 from race_review.media import source_is_current
@@ -127,6 +128,20 @@ def test_proxy_cache_reuses_only_matching_source_identity(tmp_path: Path) -> Non
     changed.chapters[0].fingerprint.sha256 = "a" * 64
     assert not proxy_is_current(output, metadata, changed)
 
+    assert not proxy_is_current(output, metadata, value, backend="cuda")
+    metadata.write_text(
+        '{"signature":"'
+        + proxy_cache_signature(value, profile="changed")
+        + '","profile":"changed"}'
+    )
+    assert not proxy_is_current(output, metadata, value)
+    metadata.write_text(
+        '{"signature":"'
+        + proxy_cache_signature(value, cache_version=2)
+        + '","cache_version":2}'
+    )
+    assert not proxy_is_current(output, metadata, value)
+
 
 def test_proxy_reports_ffmpeg_progress(tmp_path: Path) -> None:
     source = tmp_path / "GX010001.MP4"
@@ -159,3 +174,38 @@ def test_proxy_reports_ffmpeg_progress(tmp_path: Path) -> None:
     assert reused is False
     assert progress[0] == (0.5, 2.0)
     assert progress[-1] == (1.0, None)
+
+
+def test_cuda_partial_is_removed_before_clean_cpu_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "GX010001.MP4"
+    source.write_bytes(b"test")
+    value = manifest(source)
+    session_dir = tmp_path / "session"
+    partial = session_dir / "media" / "proxy.partial.mp4"
+    calls: list[str] = []
+
+    monkeypatch.setattr(proxy_module, "select_proxy_backend", lambda _settings: "cuda")
+
+    def run(command, _manifest, _progress, _should_cancel=None):
+        backend = "cuda" if "h264_nvenc" in command else "cpu"
+        calls.append(backend)
+        if backend == "cuda":
+            partial.write_bytes(b"corrupt cuda prefix")
+            return 1, ["CUDA device lost"]
+        assert not partial.exists()
+        partial.write_bytes(b"clean cpu proxy")
+        return 0, []
+
+    monkeypatch.setattr(proxy_module, "_run_proxy_command", run)
+    settings = Settings(
+        project_root=tmp_path,
+        var_root=tmp_path / "var",
+        media_roots=(tmp_path,),
+        proxy_acceleration="auto",
+    )
+    output, reused = generate_proxy(value, session_dir, settings)
+    assert calls == ["cuda", "cpu"]
+    assert output.read_bytes() == b"clean cpu proxy"
+    assert reused is False

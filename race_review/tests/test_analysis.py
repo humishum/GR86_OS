@@ -33,7 +33,7 @@ def circular_session(laps: float = 3.1, samples: int = 2_000) -> pd.DataFrame:
             "altitude_m": 100.0,
             "speed_2d_mps": 20.0,
             "gps_fix": 3,
-            "gps_error_m": 1.2,
+            "gps_dop": 1.2,
             "segment_id": 0,
         }
     )
@@ -48,23 +48,33 @@ def prepared_session() -> pd.DataFrame:
 def test_gps_quality_keeps_rejected_samples_and_reason() -> None:
     frame = circular_session(samples=8)
     frame.loc[1, "gps_fix"] = 1
-    frame.loc[2, "gps_error_m"] = 20
+    frame.loc[2, "gps_dop"] = 20
     frame.loc[3, "latitude"] = 100
     filtered = filter_gps(frame)
     assert len(filtered) == 8
     assert filtered["valid"].sum() == 5
     assert filtered.loc[1, "rejection_reason"] == "gps_fix_below_2d"
-    assert filtered.loc[2, "rejection_reason"] == "horizontal_error_limit"
+    assert filtered.loc[2, "rejection_reason"] == "gps_dop_limit"
     assert filtered.loc[3, "rejection_reason"] == "coordinate_out_of_range"
+
+    legacy = circular_session(samples=4).drop(columns="gps_dop")
+    legacy["gps_error_m"] = 99
+    # gopropy <=0.1.0 mislabeled GPSP DOP as metres. Never apply a metre
+    # threshold to that compatibility alias.
+    assert filter_gps(legacy)["valid"].all()
 
 
 def test_kinematics_do_not_bridge_segment_gap() -> None:
     frame = filter_gps(circular_session(samples=30))
+    frame["altitude_m"] = 100.0 + np.sin(np.linspace(0, math.pi, len(frame))) * 12.0
     frame.loc[15:, "segment_id"] = 1
     projected, _ = project_wgs84_to_enu(frame)
     result = derive_kinematics(projected)
     assert result.loc[15, "distance_m"] == result.loc[14, "distance_m"]
     assert math.isnan(result.loc[15, "longitudinal_accel_mps2"])
+    assert "up_smooth_m" in result
+    assert result.loc[:14, "up_smooth_m"].max() > 10
+    assert result.loc[15:, "up_smooth_m"].notna().all()
 
 
 def test_directional_laps_and_incomplete_boundaries() -> None:

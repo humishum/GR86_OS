@@ -24,48 +24,48 @@ a reviewable artifact in one focused session. Move larger outcome changes into t
 
 ## Media and import reliability
 
-- [ ] Expose the original single chapter through a constrained byte-range endpoint.
-- [ ] Detect browser `hvc1` support and implement direct-source-first playback with proxy
+- [x] Expose the original single chapter through a constrained byte-range endpoint.
+- [x] Detect browser `hvc1` support and implement direct-source-first playback with proxy
   fallback for one-chapter sessions.
-- [ ] Keep the compatibility proxy mandatory for a continuous multi-chapter media clock.
-- [ ] Add explicit rebuild proxy, retry import, and cancel import actions.
-- [ ] Make import resume stage-aware with artifact validity/version checks.
-- [ ] Persist structured per-stage start/end time, backend, command profile, and failure
+- [x] Keep the compatibility proxy mandatory for a continuous multi-chapter media clock.
+- [x] Add explicit rebuild proxy, retry import, and cancel import actions.
+- [x] Make import resume stage-aware with artifact validity/version checks.
+- [x] Persist structured per-stage start/end time, backend, command profile, and failure
   diagnostics.
-- [ ] Decide whether source-time gaps should remain metadata-only or become explicit
+- [x] Decide whether source-time gaps should remain metadata-only or become explicit
   black/silent spans in the canonical media timeline.
-- [ ] Test CUDA failure after partial progress and confirm clean CPU fallback.
-- [ ] Test proxy-cache invalidation across backend/profile/version changes.
-- [ ] Add stale-source relocation rather than warning only.
+- [x] Test CUDA failure after partial progress and confirm clean CPU fallback.
+- [x] Test proxy-cache invalidation across backend/profile/version changes.
+- [x] Add stale-source relocation rather than warning only.
 
 ## Playback and synchronization
 
-- [ ] Add a development synchronization overlay: video time, sample bracket, interpolated
+- [x] Add a development synchronization overlay: video time, sample bracket, interpolated
   time, requestVideoFrameCallback support, and drift.
-- [ ] Add play/pause/ended state listeners so icons update independently of telemetry
+- [x] Add play/pause/ended state listeners so icons update independently of telemetry
   renders.
-- [ ] Add previous/next frame and previous/next event controls.
-- [ ] Add lap and corner keyboard navigation.
-- [ ] Test seeking near zero, duration, keyframes, chapter boundaries, and discontinuities.
-- [ ] Test background-tab pause/resume and playback-rate changes.
-- [ ] Add a user-visible media error with source/proxy fallback action.
+- [x] Add previous/next frame and previous/next event controls.
+- [x] Add lap and corner keyboard navigation.
+- [x] Test seeking near zero, duration, keyframes, chapter boundaries, and discontinuities.
+- [x] Test background-tab pause/resume and playback-rate changes.
+- [x] Add a user-visible media error with source/proxy fallback action.
 
 ## Charts and route
 
 - [x] Reserve chart readout space so axis details are not covered by the player bar.
 - [x] Reduce the persistent player bar to 46 px desktop and 52 px mobile.
-- [ ] Give speed and g independent labeled y scales.
-- [ ] Add zoom, pan, selection, reset, and a moving time window.
-- [ ] Link chart hover/click to video seek and route position.
-- [ ] Add track-distance mode to the main chart.
-- [ ] Add map follow mode, heading-up mode, and full-route reset.
-- [ ] Allow individual lap visibility/color selection.
-- [ ] Add accessible text summaries for chart windows and selected points.
-- [ ] Confirm all readouts fit at 320, 375, 768, 1440, and ultrawide widths.
+- [x] Give speed and g independent labeled y scales.
+- [x] Add zoom, pan, selection, reset, and a moving time window.
+- [x] Link chart hover/click to video seek and route position.
+- [x] Add track-distance mode to the main chart.
+- [x] Add map follow mode, heading-up mode, and full-route reset.
+- [x] Allow individual lap visibility/color selection.
+- [x] Add accessible text summaries for chart windows and selected points.
+- [x] Confirm all readouts fit at 320, 375, 768, 1440, and ultrawide widths.
 
 ## Analysis quality
 
-- [ ] Display GPS validity, fix dimension, horizontal error, and rejection reason near the
+- [ ] Display GPS validity, fix dimension, dilution of precision, and rejection reason near the
   current point.
 - [ ] Show confidence and diagnostics for inferred start/finish, laps, corners, and axes.
 - [ ] Add direct map editing for start/finish position and crossing direction.
@@ -98,14 +98,26 @@ a reviewable artifact in one focused session. Move larger outcome changes into t
 
 ## Frontend quality and accessibility
 
-- [ ] Add visible focus styles and audit keyboard tab order.
-- [ ] Add reduced-motion handling.
-- [ ] Increase or adapt small metadata text where it carries operational meaning.
-- [ ] Code-split MapLibre, comparison, and editor paths; the current main bundle is about
-  1.33 MB before gzip.
-- [ ] Add error boundaries and actionable API/media error states.
-- [ ] Persist display-unit choices through the API manifest as well as local defaults.
-- [ ] Add component-level tests for interpolation readouts and missing values.
+- [x] Add a consistent visible `:focus-visible` treatment and cover the critical review
+  control tab order in Playwright.
+- [x] Make the analysis drawer a keyboard-contained modal with initial focus, Escape
+  dismissal, and trigger-focus restoration.
+- [x] Honor reduced-motion preferences in CSS transitions and MapLibre camera movement.
+- [x] Establish a responsive metadata text floor for operational gauges, diagnostics,
+  chart/map readouts, and editor fields.
+- [x] Lazy-load MapLibre, comparison, and editor paths with layout-preserving fallbacks;
+  the startup JavaScript chunk is now about 288 KB before gzip.
+- [x] Add a top-level render error boundary and structured, actionable API errors.
+- [x] Announce and expose retry/recovery actions for library, import, processing, media,
+  comparison, and editor-save failures.
+- [x] Validate and persist display-unit choices through the API manifest and edit ledger.
+- [x] Validate local display-unit defaults and apply them to newly imported sessions.
+- [x] Apply session display units consistently to gauges, charts, laps, corner distance,
+  and map elevation while keeping source telemetry in SI.
+- [x] Add a Vitest, jsdom, and React Testing Library component-test layer.
+- [x] Cover interpolation boundaries, discrete values, and null preservation with unit
+  tests.
+- [x] Cover missing-versus-zero gauge readouts with rendered component tests.
 
 ## Test and release hygiene
 

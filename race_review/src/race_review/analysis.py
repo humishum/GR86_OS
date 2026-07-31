@@ -34,7 +34,9 @@ def normalize_gps_columns(frame: pd.DataFrame) -> pd.DataFrame:
         "speed_2d_mps": ("speed_2d_mps", "speed_2d", "GPS5_speed_2d", "GPS9_speed_2d"),
         "speed_3d_mps": ("speed_3d_mps", "speed_3d", "GPS5_speed_3d", "GPS9_speed_3d"),
         "gps_fix": ("gps_fix", "fix", "GPSF", "GPS9_fix"),
-        "gps_error_m": ("gps_error_m", "dop", "GPSP", "GPS9_dop"),
+        # gopropy 0.1.1 corrected GPSP: this value is dimensionless dilution
+        # of precision, never a positional error measured in metres.
+        "gps_dop": ("gps_dop", "dop", "GPSP", "GPS9_dop", "gps_precision"),
         "gps_utc": ("gps_utc", "utc", "GPSU"),
     }
     for target, candidates in aliases.items():
@@ -46,7 +48,7 @@ def normalize_gps_columns(frame: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
-def filter_gps(frame: pd.DataFrame, horizontal_error_limit_m: float = 5.0) -> pd.DataFrame:
+def filter_gps(frame: pd.DataFrame, gps_dop_limit: float = 5.0) -> pd.DataFrame:
     result = normalize_gps_columns(frame)
     required = ("timestamp", "latitude", "longitude")
     missing = [name for name in required if name not in result]
@@ -70,11 +72,11 @@ def filter_gps(frame: pd.DataFrame, horizontal_error_limit_m: float = 5.0) -> pd
         reasons[valid & bad_fix] = "gps_fix_below_2d"
         valid &= ~bad_fix
 
-    if "gps_error_m" in result:
-        error = pd.to_numeric(result["gps_error_m"], errors="coerce").to_numpy(float)
-        bad_error = ~np.isfinite(error) | (error > horizontal_error_limit_m)
-        reasons[valid & bad_error] = "horizontal_error_limit"
-        valid &= ~bad_error
+    if "gps_dop" in result:
+        dop = pd.to_numeric(result["gps_dop"], errors="coerce").to_numpy(float)
+        bad_dop = ~np.isfinite(dop) | (dop > gps_dop_limit)
+        reasons[valid & bad_dop] = "gps_dop_limit"
+        valid &= ~bad_dop
 
     if "valid" in result:
         source_valid = result["valid"].fillna(False).to_numpy(bool)
@@ -165,10 +167,15 @@ def derive_kinematics(frame: pd.DataFrame) -> pd.DataFrame:
     t = result["timestamp"].to_numpy(float)
     east = result["east_m"].to_numpy(float)
     north = result["north_m"].to_numpy(float)
+    up = pd.to_numeric(
+        result.get("up_m", pd.Series(np.nan, index=result.index)), errors="coerce"
+    ).to_numpy(float)
     east_s = _smooth(east, valid, segment)
     north_s = _smooth(north, valid, segment)
+    up_s = _smooth(up, valid, segment)
     result["east_smooth_m"] = east_s
     result["north_smooth_m"] = north_s
+    result["up_smooth_m"] = up_s
 
     ds = np.full(len(result), np.nan)
     dt = np.full(len(result), np.nan)

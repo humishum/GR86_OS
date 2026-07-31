@@ -12,7 +12,8 @@ The application currently provides:
 - source fingerprinting without modifying or copying source recordings;
 - native GPMF extraction through the pinned sibling `gopro-py` repository;
 - GPS filtering, local projection, kinematics, laps, corners, and calibration estimates;
-- a cached browser-compatible video proxy;
+- constrained original-source playback for supported single chapters plus a cached
+  browser-compatible video proxy;
 - synchronized video, telemetry, route position, gauges, lap summaries, and comparison;
 - persisted edits and portable analysis-bundle export.
 
@@ -73,14 +74,17 @@ FastAPI.
 7. Filter and project GPS, derive kinematics, infer the start/finish line, build laps
    and a centerline, detect corners, and estimate camera-axis calibration.
 8. Persist analysis and a thumbnail, then checkpoint the manifest before the long
-   proxy stage.
+   proxy stage. Every stage records attempt start/end, backend, command profile, and
+   structured failure details in the manifest.
 9. Reuse a matching proxy or transcode it while reporting percentage, speed, and ETA.
 10. Atomically finalize the manifest and mark the catalog job ready.
 
 `ImportService` currently uses a process-local `ThreadPoolExecutor` with one worker.
-On startup, queued or processing manifests are resubmitted. A resumed import currently
-recomputes extraction and analysis before reusing or rebuilding the proxy; it is safe
-but not yet stage-minimal.
+On startup, queued or processing manifests are resubmitted. Resume validates the pinned
+gopropy/analysis versions and required Parquet/JSON contents before skipping completed
+telemetry and analysis, independently validates the thumbnail, and delegates proxy
+validity to the backend/profile/cache-version signature. Failed or cancelled imports
+can be retried, active work can be cancelled, and a ready proxy can be rebuilt explicitly.
 
 ## Canonical timing contract
 
@@ -90,10 +94,18 @@ All joins use floating-point video-relative seconds:
 session time = chapter timeline_start_seconds + native chapter sample time
 ```
 
-Chapter timeline starts are composed from ordered media durations. A wall-clock gap is
-stored in `gap_before_seconds` and marked as a discontinuity, but the playback timeline
-is currently continuous because the proxy concatenates chapters without inserting
-black/silent media for the gap.
+Chapter timeline starts are composed from ordered media durations. Source-time gaps are
+intentionally metadata-only: `gap_before_seconds` and the discontinuity marker preserve
+provenance, while the canonical playback clock remains continuous. Race Review does not
+insert synthetic black/silent spans because they would not correspond to recorded video
+or telemetry and would make lap-review seeks pay for missing footage.
+
+For one-chapter sessions, the API can stream the original MP4 only while its stored
+size/mtime fingerprint is current and its path remains inside a configured media root.
+The frontend selects that source when the recorded video codec is browser-compatible,
+including an explicit `hvc1` capability check for HEVC, then falls back to the proxy on
+a media loading error. Multi-chapter sessions always use the compatibility proxy so one
+HTML video clock remains continuous across chapter boundaries.
 
 The frontend treats the HTML video element as the clock authority:
 
@@ -113,13 +125,15 @@ main review trace.
 
 The pinned `gopro-py` revision is recorded in `pyproject.toml` and each manifest.
 Quality-aware extraction retains timestamps, packet association, valid masks, timing
-method/confidence/residual summaries, and GPS fix/error/UTC metadata where present.
+method/confidence/residual summaries, and GPS fix/DOP/UTC metadata where present.
 
 ### GPS validity
 
 Samples are preserved even when rejected. Validation includes finite/range checks,
-fix dimension of at least two, and a configurable default horizontal error limit of
-5 meters. `rejection_reason` and aggregate diagnostics explain exclusions.
+fix dimension of at least two, and a configurable dimensionless GPS DOP limit of 5
+(`RACE_REVIEW_GPS_DOP_LIMIT`). The legacy `RACE_REVIEW_GPS_ERROR_LIMIT_M` environment
+name remains a fallback for existing installations, but its value is interpreted as DOP.
+`rejection_reason` and aggregate diagnostics explain exclusions.
 
 ### Derived coordinates and motion
 
@@ -189,13 +203,14 @@ The default acceleration policy is `auto`:
 1. Exercise `h264_nvenc` with a tiny encode to verify runtime driver access.
 2. If available, decode HEVC into CUDA frames, resize with `scale_cuda`, and encode with
    NVENC.
-3. If the real CUDA pipeline fails in automatic mode, retry from the beginning with
-   `libx264`.
+3. If the real CUDA pipeline fails in automatic mode, delete its partial artifact and
+   retry from the beginning with `libx264`.
 4. Record the selected backend in `proxy.json`.
 
 `RACE_REVIEW_PROXY_ACCELERATION=cuda` requires NVIDIA acceleration and fails clearly if
 it cannot initialize. `cpu` forces the portable path. Completed proxies are reused only
-when their source SHA-256 list and versioned proxy profile match.
+when their source SHA-256 list, selected backend, versioned proxy profile, and cache
+schema match.
 
 ## HTTP API
 
@@ -207,6 +222,9 @@ when their source SHA-256 list and versioned proxy profile match.
 | `POST /api/sessions/import` | Validate, create, and enqueue a session. |
 | `GET /api/sessions/{id}` | Manifest and stale-source warnings. |
 | `GET /api/sessions/{id}/status` | Import stage, progress, speed/ETA message, and error. |
+| `POST /api/sessions/{id}/retry` | Retry a failed or cancelled import from valid artifacts. |
+| `POST /api/sessions/{id}/cancel` | Request cancellation of active import/proxy work. |
+| `POST /api/sessions/{id}/media/proxy/rebuild` | Force a fresh compatibility proxy. |
 | `GET /api/sessions/{id}/telemetry` | Field-selectable, bounded, downsampled telemetry window. |
 | `GET /api/sessions/{id}/laps` | Lap summaries. |
 | `GET /api/sessions/{id}/corners` | Corner summaries. |
@@ -232,7 +250,8 @@ Feature components receive data and callbacks rather than accessing global store
 - `useVideoClock` owns canonical presented media time;
 - `telemetry.ts` unpacks columnar API rows and interpolates samples;
 - `Gauges` renders the current interpolated values;
-- `TrackMap` initializes route/corner/start layers and updates only the position source;
+- `TrackMap` initializes route/corner/start layers, renders smoothed GoPro altitude as a
+  color-coded extrusion ribbon, and updates only the position source during playback;
 - `TelemetryChart` owns uPlot lifecycle, resizing, cursor position, and visible readout;
 - `Scrubber` maps canonical time to controls and event markers;
 - `LapPanel` requests distance-aligned comparisons;
@@ -240,6 +259,12 @@ Feature components receive data and callbacks rather than accessing global store
 
 MapLibre runs with a route-only local style by default. An optional raster tile URL can
 be stored locally, but tiles are never required for route review.
+
+The default camera is pitched and rotatable so the altitude ribbon is visible in three
+dimensions. Pan, compass/drag rotation, top-down, reset, and 1×/3× vertical-scale
+controls remain local browser interactions. If WebGL initialization fails, a projected
+SVG elevation route keeps the review usable and reports the rendering limitation instead
+of allowing the map exception to unmount the review screen.
 
 ## Operational and security boundaries
 

@@ -3,7 +3,10 @@ import { expect, test, type Page } from "@playwright/test";
 const session = {
   schema_version: 1, session_id: "shortcuts", name: "Keyboard Test", created_at: "2026-01-01T00:00:00Z",
   updated_at: "2026-01-01T00:00:00Z", status: "ready", duration_seconds: 120,
-  chapters: [{ index: 0, filename: "test.mp4", fingerprint: { path: "/media/test.mp4", size_bytes: 1, modified_ns: 1, sha256: "0".repeat(64) }, creation_time: null, duration_seconds: 120, timeline_start_seconds: 0, timeline_end_seconds: 120, gap_before_seconds: 0, discontinuity: false }],
+  chapters: [
+    { index: 0, filename: "test-1.mp4", fingerprint: { path: "/media/test-1.mp4", size_bytes: 1, modified_ns: 1, sha256: "0".repeat(64) }, creation_time: null, duration_seconds: 60, timeline_start_seconds: 0, timeline_end_seconds: 60, gap_before_seconds: 0, discontinuity: false },
+    { index: 1, filename: "test-2.mp4", fingerprint: { path: "/media/test-2.mp4", size_bytes: 1, modified_ns: 1, sha256: "1".repeat(64) }, creation_time: null, duration_seconds: 60, timeline_start_seconds: 60, timeline_end_seconds: 120, gap_before_seconds: 2, discontinuity: true },
+  ],
   streams: [], coordinate_origin: { latitude: 38.1, longitude: -122.4, altitude_m: 10, convention: "WGS84 + right-handed ENU meters" },
   processing_versions: { race_review: "test" }, processing_options: { generate_proxy: true }, artifacts: { proxy: "media/proxy.mp4", derived_telemetry: "telemetry/derived.parquet" }, warnings: [],
   edits: { track: { start_finish_a: null, start_finish_b: null, crossing_direction: 1, minimum_lap_seconds: 20, exclude_out_lap: true, exclude_in_lap: true }, calibration: { transform: { forward_axis: "x", lateral_axis: "y", forward_sign: 1, lateral_sign: 1 }, confidence: .8, method: "test", overridden: false, diagnostics: {} }, corner_edits: [], display_units: { speed: "mph", acceleration: "g", distance: "ft", time: "s" } },
@@ -18,7 +21,10 @@ async function mockReview(page: Page) {
       { lap_number: 1, start_seconds: 0, end_seconds: 60, lap_time_seconds: 60, complete: true, excluded: false, maximum_speed_mps: 30 },
       { lap_number: 2, start_seconds: 60, end_seconds: 120, lap_time_seconds: 60, complete: true, excluded: false, maximum_speed_mps: 31 },
     ] });
-    if (url.includes("/corners")) return route.fulfill({ json: [] });
+    if (url.includes("/corners")) return route.fulfill({ json: [
+      { corner_id: "corner-1", name: "Turn 1", start_distance_m: 100, apex_distance_m: 200, end_distance_m: 300, entry_seconds: 20, apex_seconds: 25, exit_seconds: 30 },
+      { corner_id: "corner-2", name: "Turn 2", start_distance_m: 500, apex_distance_m: 600, end_distance_m: 700, entry_seconds: 70, apex_seconds: 75, exit_seconds: 80 },
+    ] });
     if (url.includes("/comparison")) return route.fulfill({ json: { distance_m: [], reference_time_s: [], comparison_time_s: [], delta_s: [], reference_speed_mps: [], comparison_speed_mps: [] } });
     if (url.includes("/media/proxy")) return route.fulfill({ status: 404 });
     if (url.endsWith("/api/sessions/shortcuts")) return route.fulfill({ json: session });
@@ -86,6 +92,30 @@ test("global playback shortcuts control the canonical video clock", async ({ pag
   expect(await video.evaluate((element) => element.playbackRate)).toBe(1.5);
   await page.keyboard.press("Shift+Comma");
   await expect(page.getByLabel("Playback speed")).toHaveValue("1");
+
+  await video.evaluate((element) => { element.currentTime = .25; });
+  await page.keyboard.press("ArrowLeft");
+  expect(await currentTime()).toBe(0);
+  await video.evaluate((element) => { element.currentTime = 119; });
+  await page.keyboard.press("ArrowRight");
+  expect(await currentTime()).toBe(120);
+
+  await video.evaluate((element) => { element.currentTime = 55; });
+  await page.keyboard.press("BracketRight");
+  expect(await currentTime()).toBe(60);
+  await video.evaluate((element) => { element.currentTime = 72; });
+  await page.keyboard.press("Semicolon");
+  expect(await currentTime()).toBe(70);
+  await page.keyboard.press("Quote");
+  expect(await currentTime()).toBe(75);
+
+  await page.getByRole("button", { name: "Previous frame" }).click();
+  expect(await currentTime()).toBeCloseTo(75 - 1001 / 60000, 6);
+  await page.getByRole("button", { name: "Next event" }).click();
+  expect(await currentTime()).toBe(75);
+  await page.getByRole("button", { name: "Next event" }).click();
+  expect(await currentTime()).toBe(80);
+  await expect(page.locator(".marker--chapter")).toHaveCount(1);
 });
 
 test("focused player controls retain their native keyboard behavior", async ({ page }) => {
@@ -99,4 +129,25 @@ test("focused player controls retain their native keyboard behavior", async ({ p
   await page.getByLabel("Playback speed").focus();
   await page.keyboard.press("Space");
   await expect(video).not.toHaveAttribute("data-play-calls", "1");
+});
+
+test("background pause/resume preserves playback rate", async ({ page }) => {
+  await mockReview(page);
+  const video = page.locator("video");
+  await page.getByLabel("Playback speed").selectOption("1.5");
+  await page.keyboard.press("Space");
+  await expect(video).toHaveAttribute("data-play-calls", "1");
+
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect(video).toHaveAttribute("data-pause-calls", "1");
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect(video).toHaveAttribute("data-play-calls", "2");
+  await expect(page.getByLabel("Playback speed")).toHaveValue("1.5");
+  expect(await video.evaluate((element) => element.playbackRate)).toBe(1.5);
 });

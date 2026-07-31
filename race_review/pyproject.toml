@@ -14,7 +14,7 @@ dependencies = [
   "pyproj>=3.7,<4",
   "scipy>=1.14,<2",
   "uvicorn[standard]>=0.32,<0.36",
-  "gopropy>=0.1.0",
+  "gopropy==0.1.1",
 ]
 
 [project.optional-dependencies]
@@ -43,7 +43,7 @@ gopropy = { path = "../../gopro-py", editable = true }
 
 [tool.race-review]
 gopropy-repository = "https://github.com/humishum/gopropy.git"
-gopropy-revision = "3040b2f4efc8624e24c0962289eabb25f6a26c7b"
+gopropy-revision = "082d65bfb2e0629c3dc46c5f83d6208e661a8ca7"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

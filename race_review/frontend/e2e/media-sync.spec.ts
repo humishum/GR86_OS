@@ -130,7 +130,7 @@ async function expectSynchronizedClock(page: Page) {
   return videoTime;
 }
 
-test("real H.264 playback and paused seeking keep rendered telemetry synchronized", async ({ page }) => {
+test("real H.264 playback and near-edge/keyframe seeking keep rendered telemetry synchronized", async ({ page }) => {
   await mockReview(page);
   await page.goto("/?session=media-sync");
 
@@ -182,6 +182,13 @@ test("real H.264 playback and paused seeking keep rendered telemetry synchronize
   expect(await numericAttribute(map, "data-position-longitude")).not.toBeCloseTo(playedLongitude, 5);
   expect((await chartCursor.boundingBox())?.x).toBeGreaterThan(playedCursor ?? 0);
   await expect(primaryReadout).toContainText("Speed mph");
+
+  await video.evaluate((element: HTMLVideoElement) => { element.currentTime = .001; });
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime)).toBeLessThan(.05);
+  await expectSynchronizedClock(page);
+  await video.evaluate((element: HTMLVideoElement) => { element.currentTime = 3.99; });
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime)).toBeGreaterThan(3.9);
+  await expectSynchronizedClock(page);
 
   const renderedPixels = await chartCanvas.evaluate((canvas: HTMLCanvasElement) => {
     const context = canvas.getContext("2d");

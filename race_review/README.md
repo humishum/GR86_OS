@@ -14,7 +14,7 @@ Local-first GoPro session review. Source MP4s are fingerprinted and referenced i
 - Python 3.12 and `uv`
 - Node 20 and npm
 - FFmpeg/ffprobe with H.264 encoding support
-- The sibling `gopro-py` checkout pinned at `3040b2f4efc8624e24c0962289eabb25f6a26c7b`
+- The sibling `gopro-py` checkout pinned at `082d65bfb2e0629c3dc46c5f83d6208e661a8ca7`
 
 ## Run locally
 

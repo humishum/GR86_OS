@@ -4,11 +4,13 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview",
+    "dev": "vite --config vite.config.ts",
+    "build": "tsc -b && vite build --config vite.config.ts",
+    "preview": "vite preview --config vite.config.ts",
     "generate:api": "openapi-typescript openapi.json -o src/generated/api-types.ts",
     "generate:test-media": "node scripts/generate-test-video.mjs",
+    "test": "vitest run",
+    "test:unit": "vitest run",
     "test:e2e": "playwright test",
     "test:rendering": "playwright test e2e/media-sync.spec.ts"
   },
@@ -19,12 +21,16 @@
     "uplot": "^1.6.32"
   },
   "devDependencies": {
+    "@playwright/test": "^1.54.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
-    "@playwright/test": "^1.54.1",
     "@vitejs/plugin-react": "^4.6.0",
+    "jsdom": "^29.1.1",
     "openapi-typescript": "^7.8.0",
     "typescript": "~5.8.3",
-    "vite": "^7.0.4"
+    "vite": "^7.0.4",
+    "vitest": "^4.1.10"
   }
 }
