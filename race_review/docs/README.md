@@ -12,6 +12,10 @@ the next milestones.
 - [Roadmap](ROADMAP.md): ordered milestones, outcomes, dependencies, and definitions
   of done.
 - [Active TODO list](../TODO.md): concrete, checkable engineering tasks.
+- [Release checklist and versioning](RELEASE.md): CI, local release steps, and when to
+  bump manifest, analysis, and proxy identifiers.
+- [Performance budgets](PERFORMANCE.md): import, telemetry, map, and seek ceilings.
+- [Changelog](../CHANGELOG.md): user-visible and processing-version changes.
 
 The generated OpenAPI schema remains the canonical HTTP contract. Export it with
 `uv run python scripts/export_openapi.py`; the checked-in TypeScript bindings are

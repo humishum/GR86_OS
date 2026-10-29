@@ -136,9 +136,7 @@ def test_proxy_cache_reuses_only_matching_source_identity(tmp_path: Path) -> Non
     )
     assert not proxy_is_current(output, metadata, value)
     metadata.write_text(
-        '{"signature":"'
-        + proxy_cache_signature(value, cache_version=2)
-        + '","cache_version":2}'
+        '{"signature":"' + proxy_cache_signature(value, cache_version=2) + '","cache_version":2}'
     )
     assert not proxy_is_current(output, metadata, value)
 

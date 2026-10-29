@@ -12,6 +12,8 @@ type Options = {
   laps: LapSummary[];
   corners: CornerSummary[];
   onPlaybackRateChange: (rate: number) => void;
+  onTheaterToggle?: () => void;
+  onFullscreenToggle?: () => void;
 };
 
 function isInteractiveTarget(target: EventTarget | null) {
@@ -44,7 +46,15 @@ function adjacentRate(current: number, direction: -1 | 1) {
   return [...PLAYBACK_RATES].reverse().find((rate) => rate < current) ?? PLAYBACK_RATES[0];
 }
 
-export function usePlaybackShortcuts({ video, duration, laps, corners, onPlaybackRateChange }: Options) {
+export function usePlaybackShortcuts({
+  video,
+  duration,
+  laps,
+  corners,
+  onPlaybackRateChange,
+  onTheaterToggle,
+  onFullscreenToggle,
+}: Options) {
   useEffect(() => {
     if (!video) return;
 
@@ -85,6 +95,10 @@ export function usePlaybackShortcuts({ video, duration, laps, corners, onPlaybac
         const direction = event.code === "Semicolon" ? -1 : 1;
         const boundary = eventBoundary(corners, video.currentTime, direction);
         if (boundary != null) seek(boundary);
+      } else if (event.code === "KeyT") {
+        onTheaterToggle?.();
+      } else if (event.code === "KeyF") {
+        onFullscreenToggle?.();
       } else {
         handled = false;
       }
@@ -94,5 +108,5 @@ export function usePlaybackShortcuts({ video, duration, laps, corners, onPlaybac
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [corners, duration, laps, onPlaybackRateChange, video]);
+  }, [corners, duration, laps, onFullscreenToggle, onPlaybackRateChange, onTheaterToggle, video]);
 }

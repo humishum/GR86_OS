@@ -62,9 +62,7 @@ def probe_format(path: Path, ffprobe: str) -> dict[str, float | int]:
     }
 
 
-def seek_latency(
-    path: Path, timestamp: float, ffmpeg: str, *, repeats: int
-) -> dict[str, Any]:
+def seek_latency(path: Path, timestamp: float, ffmpeg: str, *, repeats: int) -> dict[str, Any]:
     samples = []
     command = [
         ffmpeg,
@@ -163,9 +161,7 @@ def benchmark_backend(
 
 
 def command_version(command: str) -> str:
-    completed = subprocess.run(
-        [command, "-version"], check=True, capture_output=True, text=True
-    )
+    completed = subprocess.run([command, "-version"], check=True, capture_output=True, text=True)
     return completed.stdout.splitlines()[0]
 
 

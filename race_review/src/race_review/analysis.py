@@ -11,13 +11,19 @@ from .models import (
     AxisTransform,
     Calibration,
     CoordinateOrigin,
+    CornerComparison,
     CornerSummary,
+    DeltaRegion,
     LapSummary,
     LinePoint,
     TrackConfig,
 )
 
 G = 9.80665
+# Bump when derived telemetry, lap, corner, or calibration semantics change.
+# Import resume treats a mismatch as stale analysis and recomputes artifacts.
+# See docs/RELEASE.md.
+ANALYSIS_VERSION = "1"
 
 
 def _first_present(frame: pd.DataFrame, names: Iterable[str]) -> str | None:
@@ -266,10 +272,7 @@ def infer_start_finish(frame: pd.DataFrame, minimum_lap_seconds: float = 20.0) -
             int(group[np.argmin(distance[group])])
             for group in np.split(
                 nearby,
-                np.flatnonzero(
-                    (np.diff(nearby) != 1) | (np.diff(times[nearby]) > 2.0)
-                )
-                + 1,
+                np.flatnonzero((np.diff(nearby) != 1) | (np.diff(times[nearby]) > 2.0)) + 1,
             )
             if len(group)
         ]
@@ -582,12 +585,8 @@ def detect_corners(frame: pd.DataFrame) -> list[CornerSummary]:
             # No lap is marked complete (for example, a recording containing
             # only out/in laps). Never concatenate reset lap distances into one
             # artificial signal; degrade deliberately to the longest valid lap.
-            fallback_number = (
-                lap_candidates.groupby("lap_number")["lap_distance_m"].max().idxmax()
-            )
-            working = lap_candidates[
-                lap_candidates["lap_number"] == fallback_number
-            ].copy()
+            fallback_number = lap_candidates.groupby("lap_number")["lap_distance_m"].max().idxmax()
+            working = lap_candidates[lap_candidates["lap_number"] == fallback_number].copy()
             working["distance_m"] = working["lap_distance_m"]
 
     consensus = signal_distance is not None and signal_curvature is not None
@@ -602,11 +601,7 @@ def detect_corners(frame: pd.DataFrame) -> list[CornerSummary]:
         # The consensus permits a lower curvature threshold than a noisy single
         # lap.  0.006 1/m is a 167 m radius; the acceleration guard rejects slow
         # paddock motion and GPS wandering.
-        active = (
-            (np.abs(curvature) >= 0.006)
-            & (np.abs(lateral) >= 1.5)
-            & signal_support
-        )
+        active = (np.abs(curvature) >= 0.006) & (np.abs(lateral) >= 1.5) & signal_support
         active_indices = np.flatnonzero(active)
         for left, right in zip(active_indices[:-1], active_indices[1:], strict=False):
             same_direction = np.sign(curvature[left]) == np.sign(curvature[right])
@@ -636,9 +631,7 @@ def detect_corners(frame: pd.DataFrame) -> list[CornerSummary]:
         heading_change = abs(
             float(
                 np.sum(
-                    (corner_curvature[1:] + corner_curvature[:-1])
-                    * np.diff(corner_distance)
-                    / 2
+                    (corner_curvature[1:] + corner_curvature[:-1]) * np.diff(corner_distance) / 2
                 )
             )
         )
@@ -649,8 +642,7 @@ def detect_corners(frame: pd.DataFrame) -> list[CornerSummary]:
         ):
             continue
         section = working[
-            (working["distance_m"] >= start_distance)
-            & (working["distance_m"] <= end_distance)
+            (working["distance_m"] >= start_distance) & (working["distance_m"] <= end_distance)
         ]
         if section.empty:
             continue
@@ -658,9 +650,7 @@ def detect_corners(frame: pd.DataFrame) -> list[CornerSummary]:
             distance[indices[int(np.nanargmax(np.abs(lateral[indices])))]]
         )
         apex_position = int(
-            np.nanargmin(
-                np.abs(section["distance_m"].to_numpy(float) - consensus_apex_distance)
-            )
+            np.nanargmin(np.abs(section["distance_m"].to_numpy(float) - consensus_apex_distance))
         )
         apex = section.iloc[apex_position]
         before = working[
@@ -854,6 +844,136 @@ class LapComparison:
     delta_s: np.ndarray
     reference_speed_mps: np.ndarray
     comparison_speed_mps: np.ndarray
+    reference_lateral_g: np.ndarray
+    comparison_lateral_g: np.ndarray
+    reference_longitudinal_g: np.ndarray
+    comparison_longitudinal_g: np.ndarray
+
+
+def _finite_or_none(value: float) -> float | None:
+    return float(value) if np.isfinite(value) else None
+
+
+def _series_at(values: np.ndarray, index: int) -> float | None:
+    if index < 0 or index >= len(values):
+        return None
+    return _finite_or_none(float(values[index]))
+
+
+def _peak_abs(values: np.ndarray, start: int, end: int) -> float | None:
+    low, high = min(start, end), max(start, end) + 1
+    window = values[low:high]
+    finite = window[np.isfinite(window)]
+    if finite.size == 0:
+        return None
+    return float(finite[int(np.argmax(np.abs(finite)))])
+
+
+def _braking_distance(
+    distance: np.ndarray, longitudinal_g: np.ndarray, start_distance: float
+) -> float | None:
+    in_window = (distance >= start_distance - 120.0) & (distance <= start_distance)
+    mask = in_window & np.isfinite(longitudinal_g)
+    candidates = np.where(mask & (longitudinal_g <= -0.1))[0]
+    if candidates.size == 0:
+        return None
+    return float(distance[int(candidates[0])])
+
+
+def summarize_delta_regions(
+    distance: np.ndarray,
+    delta: np.ndarray,
+    *,
+    minimum_span_m: float = 15.0,
+    minimum_change_s: float = 0.02,
+    limit: int = 6,
+) -> list[DeltaRegion]:
+    if len(distance) < 3 or len(delta) != len(distance):
+        return []
+    slope = np.diff(delta)
+    signs = np.sign(slope)
+    for index in range(1, len(signs)):
+        if signs[index] == 0:
+            signs[index] = signs[index - 1]
+    for index in range(len(signs) - 2, -1, -1):
+        if signs[index] == 0:
+            signs[index] = signs[index + 1]
+    step = np.diff(distance)
+    regions: list[DeltaRegion] = []
+    start = 0
+    for index in range(1, len(signs) + 1):
+        if index < len(signs) and signs[index] == signs[start]:
+            continue
+        end = index
+        change = float(delta[end] - delta[start])
+        span = float(distance[end] - distance[start])
+        if span >= minimum_span_m and abs(change) >= minimum_change_s and signs[start] != 0:
+            divisor = np.where(step[start:end] == 0, np.nan, step[start:end])
+            rates = np.abs(slope[start:end] / divisor)
+            finite_rates = rates[np.isfinite(rates)]
+            peak_rate = _finite_or_none(float(np.max(finite_rates))) if finite_rates.size else None
+            regions.append(
+                DeltaRegion(
+                    kind="loss" if change > 0 else "gain",
+                    start_distance_m=float(distance[start]),
+                    end_distance_m=float(distance[end]),
+                    delta_change_s=change,
+                    peak_rate_s_per_m=peak_rate,
+                )
+            )
+        start = index
+    gains = sorted(
+        (item for item in regions if item.kind == "gain"),
+        key=lambda item: item.delta_change_s,
+    )[:3]
+    losses = sorted(
+        (item for item in regions if item.kind == "loss"),
+        key=lambda item: item.delta_change_s,
+        reverse=True,
+    )[:3]
+    ranked = sorted([*gains, *losses], key=lambda item: abs(item.delta_change_s), reverse=True)
+    return ranked[:limit]
+
+
+def compare_corners(
+    comparison: LapComparison, corners: list[CornerSummary]
+) -> list[CornerComparison]:
+    distance = comparison.distance_m
+    if len(distance) < 2:
+        return []
+    maximum = float(distance[-1])
+    results: list[CornerComparison] = []
+    for corner in corners:
+        if corner.start_distance_m > maximum or corner.end_distance_m < distance[0]:
+            continue
+        start = int(np.argmin(np.abs(distance - corner.start_distance_m)))
+        apex = int(np.argmin(np.abs(distance - corner.apex_distance_m)))
+        end = int(np.argmin(np.abs(distance - corner.end_distance_m)))
+        results.append(
+            CornerComparison(
+                corner_id=corner.corner_id,
+                name=corner.name,
+                start_distance_m=corner.start_distance_m,
+                apex_distance_m=corner.apex_distance_m,
+                end_distance_m=corner.end_distance_m,
+                time_impact_s=float(comparison.delta_s[end] - comparison.delta_s[start]),
+                reference_entry_speed_mps=_series_at(comparison.reference_speed_mps, start),
+                comparison_entry_speed_mps=_series_at(comparison.comparison_speed_mps, start),
+                reference_apex_speed_mps=_series_at(comparison.reference_speed_mps, apex),
+                comparison_apex_speed_mps=_series_at(comparison.comparison_speed_mps, apex),
+                reference_exit_speed_mps=_series_at(comparison.reference_speed_mps, end),
+                comparison_exit_speed_mps=_series_at(comparison.comparison_speed_mps, end),
+                reference_peak_lateral_g=_peak_abs(comparison.reference_lateral_g, start, end),
+                comparison_peak_lateral_g=_peak_abs(comparison.comparison_lateral_g, start, end),
+                reference_braking_distance_m=_braking_distance(
+                    distance, comparison.reference_longitudinal_g, corner.start_distance_m
+                ),
+                comparison_braking_distance_m=_braking_distance(
+                    distance, comparison.comparison_longitudinal_g, corner.start_distance_m
+                ),
+            )
+        )
+    return sorted(results, key=lambda item: abs(item.time_impact_s), reverse=True)
 
 
 def compare_laps(
@@ -869,6 +989,8 @@ def compare_laps(
     distance = np.linspace(0, maximum, points)
 
     def interpolate(section: pd.DataFrame, column: str) -> np.ndarray:
+        if column not in section.columns:
+            return np.full(distance.shape, np.nan)
         x = section["lap_distance_m"].to_numpy(float)
         y = section[column].to_numpy(float)
         unique = np.r_[True, np.diff(x) > 0]
@@ -885,4 +1007,8 @@ def compare_laps(
         delta_s=comparison_time - reference_time,
         reference_speed_mps=interpolate(reference, "speed_mps"),
         comparison_speed_mps=interpolate(comparison, "speed_mps"),
+        reference_lateral_g=interpolate(reference, "lateral_g"),
+        comparison_lateral_g=interpolate(comparison, "lateral_g"),
+        reference_longitudinal_g=interpolate(reference, "longitudinal_g"),
+        comparison_longitudinal_g=interpolate(comparison, "longitudinal_g"),
     )

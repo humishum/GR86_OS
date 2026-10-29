@@ -1,4 +1,4 @@
-import { Children, useCallback, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject } from "react";
+import { Children, useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode, type RefObject } from "react";
 
 type Split = "column" | "leftRow" | "rightRow";
 
@@ -9,7 +9,7 @@ function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(maximum, Math.max(minimum, value));
 }
 
-export function ResizableReviewGrid({ children }: { children: ReactNode }) {
+export function ResizableReviewGrid({ children, theater = false }: { children: ReactNode; theater?: boolean }) {
   const panels = Children.toArray(children);
   const grid = useRef<HTMLDivElement>(null);
   const leftColumn = useRef<HTMLDivElement>(null);
@@ -17,6 +17,18 @@ export function ResizableReviewGrid({ children }: { children: ReactNode }) {
   const [column, setColumn] = useState(DEFAULT_COLUMN);
   const [leftRow, setLeftRow] = useState(DEFAULT_ROW);
   const [rightRow, setRightRow] = useState(DEFAULT_ROW);
+
+  useEffect(() => {
+    if (theater) {
+      setColumn(84);
+      setLeftRow(86);
+      setRightRow(42);
+    } else {
+      setColumn(DEFAULT_COLUMN);
+      setLeftRow(DEFAULT_ROW);
+      setRightRow(DEFAULT_ROW);
+    }
+  }, [theater]);
 
   const resizeAt = useCallback((split: Split, clientPosition: number) => {
     const target: RefObject<HTMLDivElement | null> = split === "column" ? grid : split === "leftRow" ? leftColumn : rightColumn;

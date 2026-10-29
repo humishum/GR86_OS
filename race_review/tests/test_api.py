@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
+import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -219,20 +221,14 @@ async def test_stale_source_can_be_relocated_only_to_identical_media(tmp_path: P
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:
-        mismatch = await client.post(
-            endpoint, json={"chapter_index": 0, "path": str(wrong)}
-        )
+        mismatch = await client.post(endpoint, json={"chapter_index": 0, "path": str(wrong)})
         assert mismatch.status_code == 422
         assert "SHA-256" in mismatch.json()["detail"]
 
-        response = await client.post(
-            endpoint, json={"chapter_index": 0, "path": str(relocated)}
-        )
+        response = await client.post(endpoint, json={"chapter_index": 0, "path": str(relocated)})
         assert response.status_code == 200
         assert response.json()["chapters"][0]["fingerprint"]["path"] == str(relocated)
-        source_response = await client.get(
-            f"/api/sessions/{session.session_id}/media/source"
-        )
+        source_response = await client.get(f"/api/sessions/{session.session_id}/media/source")
         assert source_response.status_code == 200
         assert source_response.content == b"source"
 
@@ -282,9 +278,7 @@ async def test_display_units_edit_survives_reload_and_records_edit(tmp_path: Pat
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:
-        response = await client.put(
-            f"/api/sessions/{session.session_id}/display-units", json=units
-        )
+        response = await client.put(f"/api/sessions/{session.session_id}/display-units", json=units)
         assert response.status_code == 200
         assert response.json()["edits"]["display_units"] == units
         reloaded = (await client.get(f"/api/sessions/{session.session_id}")).json()
@@ -311,3 +305,332 @@ async def test_display_units_reject_invalid_choices(tmp_path: Path) -> None:
             },
         )
     assert response.status_code == 422
+
+
+@pytest.mark.anyio
+async def test_reference_lap_and_bookmarks_persist(tmp_path: Path) -> None:
+    app, session = ready_app(tmp_path)
+    bookmarks = [
+        {
+            "id": "mark-1",
+            "seconds": 1.5,
+            "label": "Turn in",
+            "note": "Late apex",
+            "tags": ["braking"],
+            "clip": {"start_seconds": 1.2, "end_seconds": 2.4},
+        }
+    ]
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        reference = await client.put(
+            f"/api/sessions/{session.session_id}/reference-lap",
+            json={"reference_lap": 2},
+        )
+        assert reference.status_code == 200
+        assert reference.json()["edits"]["reference_lap"] == 2
+        saved = await client.put(
+            f"/api/sessions/{session.session_id}/bookmarks",
+            json=bookmarks,
+        )
+        assert saved.status_code == 200
+        assert saved.json()["edits"]["bookmarks"] == bookmarks
+        reloaded = (await client.get(f"/api/sessions/{session.session_id}")).json()
+        assert reloaded["edits"]["reference_lap"] == 2
+        assert reloaded["edits"]["bookmarks"][0]["label"] == "Turn in"
+
+    assert app.state.catalog.get_edit(session.session_id, "reference_lap") == {"reference_lap": 2}
+    assert app.state.catalog.get_edit(session.session_id, "bookmarks") == bookmarks
+
+
+@pytest.mark.anyio
+async def test_comparison_includes_regions_and_ranked_corners(tmp_path: Path) -> None:
+    app, session = ready_app(tmp_path)
+    directory = app.state.settings.session_dir(session.session_id)
+    distance = [0.0, 100.0, 200.0, 300.0, 400.0]
+    pd.DataFrame(
+        {
+            "timestamp": [0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 62.0, 72.0, 81.0, 89.0],
+            "lap_number": [1, 1, 1, 1, 1, 2, 2, 2, 2, 2],
+            "lap_distance_m": distance + distance,
+            "speed_mps": [20.0, 18.0, 16.0, 22.0, 24.0, 18.0, 15.0, 17.0, 24.0, 26.0],
+            "lateral_g": [0.1, 1.1, 0.2, 0.8, 0.1, 0.1, 0.9, 0.2, 0.7, 0.1],
+            "longitudinal_g": [0.0, -0.3, 0.1, -0.2, 0.0, -0.4, -0.3, 0.1, -0.1, 0.0],
+            "valid": [True] * 10,
+        }
+    ).to_parquet(directory / "telemetry" / "derived.parquet", index=False)
+    (directory / "analysis" / "corners.json").write_text(
+        json.dumps(
+            [
+                {
+                    "corner_id": "corner-1",
+                    "name": "Turn 1",
+                    "start_distance_m": 50,
+                    "apex_distance_m": 100,
+                    "end_distance_m": 150,
+                },
+                {
+                    "corner_id": "corner-2",
+                    "name": "Turn 2",
+                    "start_distance_m": 250,
+                    "apex_distance_m": 300,
+                    "end_distance_m": 350,
+                },
+            ]
+        )
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get(
+            f"/api/sessions/{session.session_id}/comparison",
+            params={"reference_lap": 1, "comparison_lap": 2},
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["reference_lap"] == 1
+    assert body["regions"]
+    assert body["corners"][0]["corner_id"] in {"corner-1", "corner-2"}
+    assert abs(body["corners"][0]["time_impact_s"]) >= abs(body["corners"][1]["time_impact_s"])
+
+
+EDIT_PATHS = (
+    ("PUT", "/track"),
+    ("PUT", "/calibration"),
+    ("PUT", "/display-units"),
+    ("PUT", "/reference-lap"),
+    ("PUT", "/bookmarks"),
+    ("PUT", "/corners"),
+    ("POST", "/reanalyze"),
+    ("POST", "/archive"),
+    ("POST", "/restore"),
+    ("DELETE", ""),
+)
+
+
+@pytest.mark.anyio
+async def test_edit_and_lifecycle_endpoints_return_404_for_unknown_session(tmp_path: Path) -> None:
+    app, _session = ready_app(tmp_path)
+    payloads = {
+        "/track": {"crossing_direction": 1, "minimum_lap_seconds": 20},
+        "/calibration": {"transform": {"forward_axis": "x", "lateral_axis": "y"}},
+        "/display-units": {"speed": "mph", "acceleration": "g", "distance": "ft", "time": "s"},
+        "/reference-lap": {"reference_lap": 1},
+        "/bookmarks": [],
+        "/corners": [],
+    }
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        for method, suffix in EDIT_PATHS:
+            kwargs: dict[str, object] = {}
+            if suffix in payloads:
+                kwargs["json"] = payloads[suffix]
+            if method == "DELETE":
+                kwargs["params"] = {"confirm": "missing"}
+            response = await client.request(method, f"/api/sessions/missing{suffix}", **kwargs)
+            assert response.status_code == 404, suffix
+            assert response.json()["detail"] == "Session not found"
+
+
+@pytest.mark.anyio
+async def test_every_edit_action_persists_to_sqlite_and_checkpoint(
+    tmp_path: Path, monkeypatch
+) -> None:
+    app, session = ready_app(tmp_path)
+    importer = app.state.importer
+    monkeypatch.setattr(
+        importer, "reanalyze", lambda session_id: importer.catalog.get_manifest(session_id)
+    )
+    directory = app.state.settings.session_dir(session.session_id)
+    (directory / "analysis" / "corners.json").write_text(
+        json.dumps(
+            [
+                {
+                    "corner_id": "corner-1",
+                    "name": "Turn 1",
+                    "start_distance_m": 10,
+                    "apex_distance_m": 20,
+                    "end_distance_m": 30,
+                }
+            ]
+        )
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        calibration = await client.put(
+            f"/api/sessions/{session.session_id}/calibration",
+            json={
+                "transform": {
+                    "forward_axis": "z",
+                    "lateral_axis": "x",
+                    "forward_sign": -1,
+                    "lateral_sign": 1,
+                },
+                "confidence": 0.4,
+                "method": "manual",
+            },
+        )
+        assert calibration.status_code == 200
+        assert calibration.json()["edits"]["calibration"]["overridden"] is True
+
+        corners = await client.put(
+            f"/api/sessions/{session.session_id}/corners",
+            json=[{"action": "update", "corner_id": "corner-1", "name": "Hairpin"}],
+        )
+        assert corners.status_code == 200
+        assert corners.json()[0]["name"] == "Turn 1"
+
+        reanalyze = await client.post(f"/api/sessions/{session.session_id}/reanalyze")
+        assert reanalyze.status_code == 200
+
+    catalog = app.state.catalog
+    assert catalog.get_edit(session.session_id, "calibration")["transform"]["forward_axis"] == "z"
+    assert catalog.get_edit(session.session_id, "corners")[0]["name"] == "Hairpin"
+    checkpoint = json.loads((directory / "manifest.json").read_text())
+    assert checkpoint["edits"]["calibration"]["transform"]["forward_axis"] == "z"
+    assert checkpoint["edits"]["corner_edits"][0]["name"] == "Hairpin"
+
+
+@pytest.mark.anyio
+async def test_edit_payload_errors_are_422(tmp_path: Path) -> None:
+    app, session = ready_app(tmp_path)
+    prefix = f"/api/sessions/{session.session_id}"
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        cases = [
+            (
+                "PUT",
+                f"{prefix}/calibration",
+                {
+                    "transform": {
+                        "forward_axis": "x",
+                        "lateral_axis": "x",
+                    }
+                },
+            ),
+            ("PUT", f"{prefix}/reference-lap", {"reference_lap": 0}),
+            (
+                "PUT",
+                f"{prefix}/bookmarks",
+                [
+                    {
+                        "id": "dup",
+                        "seconds": 1,
+                        "clip": {"start_seconds": 3, "end_seconds": 1},
+                    }
+                ],
+            ),
+            (
+                "PUT",
+                f"{prefix}/bookmarks",
+                [
+                    {"id": "same", "seconds": 1},
+                    {"id": "same", "seconds": 2},
+                ],
+            ),
+            ("PUT", f"{prefix}/corners", [{"action": "explode", "corner_id": "c1"}]),
+            ("PUT", f"{prefix}/track", {"crossing_direction": 0}),
+        ]
+        for method, path, payload in cases:
+            response = await client.request(method, path, json=payload)
+            assert response.status_code == 422, path
+
+
+@pytest.mark.anyio
+async def test_conflict_error_responses(tmp_path: Path) -> None:
+    app, session = ready_app(tmp_path)
+    prefix = f"/api/sessions/{session.session_id}"
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        retry = await client.post(f"{prefix}/retry")
+        assert retry.status_code == 409
+        cancel = await client.post(f"{prefix}/cancel")
+        assert cancel.status_code == 409
+        telemetry = await client.get(f"{prefix}/telemetry", params={"start": 3, "end": 1})
+        assert telemetry.status_code == 422
+        comparison = await client.get(
+            f"{prefix}/comparison", params={"reference_lap": 1, "comparison_lap": 9}
+        )
+        assert comparison.status_code == 422
+        restore = await client.post(f"{prefix}/restore")
+        assert restore.status_code == 409
+        delete = await client.delete(prefix, params={"confirm": session.session_id})
+        assert delete.status_code == 409
+        delete_confirm = await client.delete(prefix, params={"confirm": "nope"})
+        assert delete_confirm.status_code in {409, 422}
+
+    missing_media = tmp_path / "noproxy"
+    missing_media.mkdir()
+    app, session = ready_app(missing_media)
+    session.artifacts.pop("proxy", None)
+    session.coordinate_origin = None
+    app.state.catalog.save_manifest(session)
+    (app.state.settings.session_dir(session.session_id) / "telemetry" / "derived.parquet").unlink()
+    prefix = f"/api/sessions/{session.session_id}"
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        assert (await client.get(f"{prefix}/telemetry")).status_code == 409
+        assert (await client.get(f"{prefix}/track-geometry")).status_code == 409
+        assert (await client.get(f"{prefix}/media/proxy")).status_code == 409
+        assert (await client.get(f"{prefix}/thumbnail")).status_code == 409
+
+        imported = await client.post("/api/sessions/import", json={"chapters": []})
+        assert imported.status_code == 422
+
+
+@pytest.mark.anyio
+async def test_archive_restore_delete_confirmation_workflow(tmp_path: Path) -> None:
+    app, session = ready_app(tmp_path)
+    prefix = f"/api/sessions/{session.session_id}"
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        archived = await client.post(f"{prefix}/archive")
+        assert archived.status_code == 200
+        assert archived.json()["status"] == "archived"
+        blocked = await client.put(
+            f"{prefix}/display-units",
+            json={"speed": "km/h", "acceleration": "g", "distance": "m", "time": "s"},
+        )
+        assert blocked.status_code == 409
+        restored = await client.post(f"{prefix}/restore")
+        assert restored.status_code == 200
+        assert restored.json()["status"] == "ready"
+        await client.post(f"{prefix}/archive")
+        mismatch = await client.delete(prefix, params={"confirm": "other"})
+        assert mismatch.status_code == 422
+        removed = await client.delete(prefix, params={"confirm": session.session_id})
+        assert removed.status_code == 204
+        assert (await client.get(prefix)).status_code == 404
+
+
+@pytest.mark.anyio
+async def test_catalog_backup_cleanup_repair_and_export(tmp_path: Path) -> None:
+    app, session = ready_app(tmp_path)
+    directory = app.state.settings.session_dir(session.session_id)
+    (directory / "export").mkdir()
+    (directory / "export" / "stale.csv").write_text("old")
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        backup = await client.post("/api/catalog/backup")
+        assert backup.status_code == 200
+        assert Path(backup.json()["path"]).is_file()
+        cleanup = await client.post("/api/catalog/cleanup", json={"dry_run": False})
+        assert cleanup.status_code == 200
+        assert any(path.endswith("export") for path in cleanup.json()["removed_paths"])
+        repair = await client.post("/api/catalog/repair")
+        assert repair.status_code == 200
+        exported = await client.post(f"/api/sessions/{session.session_id}/export")
+        assert exported.status_code == 200
+        assert exported.headers["content-type"].startswith("application/zip")
+        with zipfile.ZipFile(io.BytesIO(exported.content)) as archive:
+            provenance = json.loads(archive.read("provenance.json"))
+            assert "application_version" in provenance
+            assert "processing_fingerprints" in provenance
+            assert "telemetry/derived.csv" in archive.namelist()

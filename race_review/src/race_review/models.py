@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class SourceFingerprint(BaseModel):
@@ -103,11 +103,37 @@ class DisplayUnits(BaseModel):
     time: Literal["s"] = "s"
 
 
+class ClipRange(BaseModel):
+    start_seconds: float = Field(ge=0)
+    end_seconds: float = Field(ge=0)
+
+    @model_validator(mode="after")
+    def clip_is_ordered(self) -> ClipRange:
+        if self.end_seconds < self.start_seconds:
+            raise ValueError("clip end must be at or after the start")
+        return self
+
+
+class Bookmark(BaseModel):
+    id: str = Field(min_length=1)
+    seconds: float = Field(ge=0)
+    label: str = ""
+    note: str = ""
+    tags: list[str] = Field(default_factory=list)
+    clip: ClipRange | None = None
+
+
+class ReferenceLapPreference(BaseModel):
+    reference_lap: int | None = Field(default=None, ge=1)
+
+
 class UserEdits(BaseModel):
     track: TrackConfig = Field(default_factory=TrackConfig)
     calibration: Calibration = Field(default_factory=Calibration)
     corner_edits: list[dict[str, Any]] = Field(default_factory=list)
     display_units: DisplayUnits = Field(default_factory=DisplayUnits)
+    reference_lap: int | None = Field(default=None, ge=1)
+    bookmarks: list[Bookmark] = Field(default_factory=list)
 
 
 class ProcessingStage(BaseModel):
@@ -139,6 +165,8 @@ class SessionManifest(BaseModel):
     edits: UserEdits = Field(default_factory=UserEdits)
     artifacts: dict[str, str] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
+    archived_from_status: str | None = None
+    archived_at: datetime | None = None
 
 
 class ImportRequest(BaseModel):
@@ -240,6 +268,50 @@ class ENUPoint(BaseModel):
     up_m: float
 
 
+class DeltaRegion(BaseModel):
+    kind: Literal["gain", "loss"]
+    start_distance_m: float
+    end_distance_m: float
+    delta_change_s: float
+    peak_rate_s_per_m: float | None = None
+
+
+class CornerComparison(BaseModel):
+    corner_id: str
+    name: str
+    start_distance_m: float
+    apex_distance_m: float
+    end_distance_m: float
+    time_impact_s: float
+    reference_entry_speed_mps: float | None = None
+    comparison_entry_speed_mps: float | None = None
+    reference_apex_speed_mps: float | None = None
+    comparison_apex_speed_mps: float | None = None
+    reference_exit_speed_mps: float | None = None
+    comparison_exit_speed_mps: float | None = None
+    reference_peak_lateral_g: float | None = None
+    comparison_peak_lateral_g: float | None = None
+    reference_braking_distance_m: float | None = None
+    comparison_braking_distance_m: float | None = None
+
+
+class LapComparisonResponse(BaseModel):
+    reference_lap: int
+    comparison_lap: int
+    distance_m: list[float]
+    reference_time_s: list[float]
+    comparison_time_s: list[float]
+    delta_s: list[float]
+    reference_speed_mps: list[float]
+    comparison_speed_mps: list[float]
+    reference_lateral_g: list[float | None] = Field(default_factory=list)
+    comparison_lateral_g: list[float | None] = Field(default_factory=list)
+    reference_longitudinal_g: list[float | None] = Field(default_factory=list)
+    comparison_longitudinal_g: list[float | None] = Field(default_factory=list)
+    regions: list[DeltaRegion] = Field(default_factory=list)
+    corners: list[CornerComparison] = Field(default_factory=list)
+
+
 class TrackGeometryAdapter(BaseModel):
     """Stable handoff boundary for future reconstruction geometry."""
 
@@ -251,3 +323,30 @@ class TrackGeometryAdapter(BaseModel):
     time_alignment_seconds: float | None = None
     route_wgs84: list[WGS84Point]
     route_enu_m: list[ENUPoint]
+
+
+class CatalogBackupResponse(BaseModel):
+    path: str
+    created_at: datetime
+    size_bytes: int
+
+
+class ArtifactCleanupRequest(BaseModel):
+    dry_run: bool = False
+
+
+class ArtifactCleanupResponse(BaseModel):
+    dry_run: bool
+    removed_paths: list[str] = Field(default_factory=list)
+    skipped_paths: list[str] = Field(default_factory=list)
+    recovered_bytes: int = 0
+
+
+class CatalogRepairResponse(BaseModel):
+    restored_from_file: list[str] = Field(default_factory=list)
+    rewritten_files: list[str] = Field(default_factory=list)
+    sqlite_won: list[str] = Field(default_factory=list)
+    file_won: list[str] = Field(default_factory=list)
+    orphan_directories: list[str] = Field(default_factory=list)
+    missing_directories: list[str] = Field(default_factory=list)
+    unreadable: list[str] = Field(default_factory=list)

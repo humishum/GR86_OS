@@ -78,23 +78,23 @@ a reviewable artifact in one focused session. Move larger outcome changes into t
 
 ## Comparison and review workflow
 
-- [ ] Link comparison charts, route-distance cursor, delta trace, and video seek.
-- [ ] Add largest-gain/loss region summaries.
-- [ ] Add corner comparison cards and rank differences by time impact.
-- [ ] Add bookmarks, notes, tags, and clip ranges.
-- [ ] Add a reference-lap preference that persists per session.
-- [ ] Add fullscreen/theater video modes without hiding telemetry context.
+- [x] Link comparison charts, route-distance cursor, delta trace, and video seek.
+- [x] Add largest-gain/loss region summaries.
+- [x] Add corner comparison cards and rank differences by time impact.
+- [x] Add bookmarks, notes, tags, and clip ranges.
+- [x] Add a reference-lap preference that persists per session.
+- [x] Add fullscreen/theater video modes without hiding telemetry context.
 
 ## API, storage, and export
 
-- [ ] Add endpoint contract tests for every edit action and error response.
-- [ ] Add manifest migrations before schema version 2.
-- [ ] Make SQLite/file-manifest authority and repair behavior explicit in code.
-- [ ] Add session delete/archive with a recoverable confirmation workflow.
-- [ ] Add catalog backup and artifact cleanup tooling.
-- [ ] Add export provenance: application version, FFmpeg version, proxy backend/profile,
+- [x] Add endpoint contract tests for every edit action and error response.
+- [x] Add manifest migrations before schema version 2.
+- [x] Make SQLite/file-manifest authority and repair behavior explicit in code.
+- [x] Add session delete/archive with a recoverable confirmation workflow.
+- [x] Add catalog backup and artifact cleanup tooling.
+- [x] Add export provenance: application version, FFmpeg version, proxy backend/profile,
   and full processing fingerprints.
-- [ ] Stream large CSV exports without loading each Parquet file fully into memory.
+- [x] Stream large CSV exports without loading each Parquet file fully into memory.
 
 ## Frontend quality and accessibility
 
@@ -121,10 +121,10 @@ a reviewable artifact in one focused session. Move larger outcome changes into t
 
 ## Test and release hygiene
 
-- [ ] Run Ruff, pytest, TypeScript build, and Playwright in CI.
-- [ ] Add Linux/macOS media fixtures and opt-in NVIDIA validation.
-- [ ] Add the full GoPro sample assertions to a documented local release checklist.
-- [ ] Record performance budgets for import, telemetry requests, map updates, and seeking.
-- [ ] Define versioning/release notes for manifest, analysis, and proxy profile changes.
-- [ ] Keep [Architecture](docs/ARCHITECTURE.md), [Design](docs/DESIGN.md), this TODO,
+- [x] Run Ruff, pytest, TypeScript build, and Playwright in CI.
+- [x] Add Linux/macOS media fixtures and opt-in NVIDIA validation.
+- [x] Add the full GoPro sample assertions to a documented local release checklist.
+- [x] Record performance budgets for import, telemetry requests, map updates, and seeking.
+- [x] Define versioning/release notes for manifest, analysis, and proxy profile changes.
+- [x] Keep [Architecture](docs/ARCHITECTURE.md), [Design](docs/DESIGN.md), this TODO,
   and the [Roadmap](docs/ROADMAP.md) current with behavior changes.

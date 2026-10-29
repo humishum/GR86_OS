@@ -3,11 +3,13 @@ import type {
   CornerSummary,
   DisplayUnits,
   JobStatus,
+  LapComparison,
   LapSummary,
   MediaEntry,
   SessionManifest,
   TelemetryWindow,
   TrackConfig,
+  Bookmark,
 } from "./types";
 
 export class ApiError extends Error {
@@ -76,8 +78,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       retryable: response.status === 408 || response.status === 429 || response.status >= 500,
     });
   }
+  if (response.status === 204) return undefined as T;
+  const text = await response.text();
+  if (!text) return undefined as T;
   try {
-    return await response.json() as T;
+    return JSON.parse(text) as T;
   } catch (cause) {
     throw new ApiError("The server returned an unreadable response. Refresh and try again.", {
       status: response.status,
@@ -132,13 +137,75 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(value),
     }),
+  saveReferenceLap: (id: string, referenceLap: number | null) =>
+    request<SessionManifest>(`/api/sessions/${id}/reference-lap`, {
+      method: "PUT",
+      body: JSON.stringify({ reference_lap: referenceLap }),
+    }),
+  saveBookmarks: (id: string, bookmarks: Bookmark[]) =>
+    request<SessionManifest>(`/api/sessions/${id}/bookmarks`, {
+      method: "PUT",
+      body: JSON.stringify(bookmarks),
+    }),
   saveCorners: (id: string, edits: Array<Record<string, unknown>>) =>
     request<CornerSummary[]>(`/api/sessions/${id}/corners`, {
       method: "PUT",
       body: JSON.stringify(edits),
     }),
+  archiveSession: (id: string) =>
+    request<SessionManifest>(`/api/sessions/${id}/archive`, { method: "POST" }),
+  restoreSession: (id: string) =>
+    request<SessionManifest>(`/api/sessions/${id}/restore`, { method: "POST" }),
+  deleteSession: (id: string) =>
+    request<void>(`/api/sessions/${id}?confirm=${encodeURIComponent(id)}`, { method: "DELETE" }),
+  backupCatalog: () =>
+    request<{ path: string; created_at: string; size_bytes: number }>("/api/catalog/backup", {
+      method: "POST",
+    }),
+  cleanupArtifacts: (dryRun = false) =>
+    request<{
+      dry_run: boolean;
+      removed_paths: string[];
+      skipped_paths: string[];
+      recovered_bytes: number;
+    }>("/api/catalog/cleanup", {
+      method: "POST",
+      body: JSON.stringify({ dry_run: dryRun }),
+    }),
+  exportBundle: async (id: string) => {
+    const path = `/api/sessions/${id}/export`;
+    let response: Response;
+    try {
+      response = await fetch(path, { method: "POST" });
+    } catch (cause) {
+      throw new ApiError(
+        "Could not reach the race review server. Check that it is running, then try again.",
+        { path, cause },
+      );
+    }
+    if (!response.ok) {
+      const payload: unknown = await response.json().catch(() => null);
+      const detail = payload && typeof payload === "object" && "detail" in payload
+        ? errorDetail((payload as { detail: unknown }).detail)
+        : errorDetail(payload);
+      throw new ApiError(responseMessage(response.status, detail || response.statusText), {
+        status: response.status,
+        path,
+        retryable: response.status >= 500,
+      });
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${id}-analysis.zip`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  },
   comparison: (id: string, reference: number, comparison: number) =>
-    request<Record<string, number[]>>(
+    request<LapComparison>(
       `/api/sessions/${id}/comparison?reference_lap=${reference}&comparison_lap=${comparison}`,
     ),
 };

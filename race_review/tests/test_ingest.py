@@ -8,9 +8,11 @@ import pandas as pd
 import pytest
 
 import race_review.ingest as ingest_module
+from race_review.analysis import ANALYSIS_VERSION
 from race_review.catalog import Catalog
 from race_review.config import Settings
 from race_review.ingest import ImportService
+from race_review.migrations import CURRENT_SCHEMA_VERSION
 from race_review.models import ImportRequest, StreamQualitySummary
 from race_review.telemetry import GOPROPY_REVISION
 
@@ -49,6 +51,8 @@ def test_ordered_chapters_preserve_gap_and_sources(
     assert manifest.chapters[1].gap_before_seconds == 2
     assert manifest.chapters[1].discontinuity is True
     assert any("missing" in warning for warning in manifest.warnings)
+    assert manifest.processing_versions["analysis"] == ANALYSIS_VERSION
+    assert manifest.processing_versions["manifest"] == str(CURRENT_SCHEMA_VERSION)
     assert first.read_bytes() == original[first]
     assert third.read_bytes() == original[third]
 

@@ -74,14 +74,15 @@ Definition of done:
 
 Outcome: the application answers where and how two laps differ.
 
-- Add linked track-distance cursors across route, speed/g traces, delta, and video.
-- Add zoomable time and distance windows with reset/full-session controls.
-- Add corner comparison cards for braking point, entry/apex/exit speed, lateral peak,
-  throttle proxy, and time gained/lost.
-- Add sectors and reusable reference laps.
-- Add synchronized A/B or ghosted video navigation where source coverage permits.
-- Add annotations/bookmarks and referenced clip ranges.
-- Improve chart axes, independent scales, tooltips, and accessible summaries.
+- Linked track-distance cursors across route, speed traces, delta, and video.
+- Zoomable time and distance windows with reset/full-session controls on the main chart.
+- Corner comparison cards for braking point, entry/apex/exit speed, lateral peak, and
+  time gained/lost, ranked by time impact.
+- Reusable reference laps persisted per session.
+- Annotations, bookmarks, notes, tags, and referenced clip ranges.
+- Theater and fullscreen video that keep gauges and a compact telemetry readout visible.
+- Remaining: sectors as an optional overlay, and synchronized A/B or ghosted video
+  navigation where source coverage permits.
 
 Definition of done:
 
@@ -95,11 +96,14 @@ Outcome: installation and large-session use are routine rather than developer wo
 
 - Code-split MapLibre/uPlot/editor bundles and reduce initial JavaScript transfer.
 - Window or level-of-detail telemetry for very long sessions.
-- Add an installable desktop/local launcher and first-run dependency diagnostics.
-- Add catalog backup/restore and artifact cleanup controls.
+- Catalog backup, session archive/delete confirmation, and artifact cleanup are in
+  the library; remaining packaging work is an installable launcher, first-run
+  dependency diagnostics, structured logs, and a support bundle.
 - Support configurable proxy resolution/frame rate/quality policies.
 - Add structured application logs and a downloadable support bundle.
-- Run CI across Linux and macOS with CPU media fixtures; keep real GoPro/GPU tests opt-in.
+- CI runs Ruff, pytest, the TypeScript production build, and Playwright on Linux and
+  macOS with CPU media fixtures; real GoPro and NVIDIA tests remain opt-in on the
+  [release checklist](RELEASE.md).
 
 ## Later roadmap
 

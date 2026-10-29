@@ -6,7 +6,7 @@ const session = {
   chapters: [{ index: 0, filename: "GX010001.MP4", fingerprint: { path: "/media/GX010001.MP4", size_bytes: 1, modified_ns: 1, sha256: "0".repeat(64) }, creation_time: null, duration_seconds: 120, timeline_start_seconds: 0, timeline_end_seconds: 120, gap_before_seconds: 0, discontinuity: false }],
   streams: [], coordinate_origin: { latitude: 38.1, longitude: -122.4, altitude_m: 10, convention: "WGS84 + right-handed ENU meters" },
   processing_versions: { race_review: "test" }, processing_options: { generate_proxy: true }, artifacts: { proxy: "media/proxy.mp4", derived_telemetry: "telemetry/derived.parquet" }, warnings: [],
-  edits: { track: { start_finish_a: null, start_finish_b: null, crossing_direction: 1, minimum_lap_seconds: 20, exclude_out_lap: true, exclude_in_lap: true }, calibration: { transform: { forward_axis: "x", lateral_axis: "y", forward_sign: 1, lateral_sign: 1 }, confidence: .8, method: "test", overridden: false, diagnostics: {} }, corner_edits: [], display_units: { speed: "mph", acceleration: "g", distance: "ft", time: "s" } },
+  edits: { track: { start_finish_a: null, start_finish_b: null, crossing_direction: 1, minimum_lap_seconds: 20, exclude_out_lap: true, exclude_in_lap: true }, calibration: { transform: { forward_axis: "x", lateral_axis: "y", forward_sign: 1, lateral_sign: 1 }, confidence: .8, method: "test", overridden: false, diagnostics: {} }, corner_edits: [], display_units: { speed: "mph", acceleration: "g", distance: "ft", time: "s" }, reference_lap: null, bookmarks: [] },
 };
 
 async function mockApi(
@@ -22,7 +22,46 @@ async function mockApi(
     if (url.includes("/telemetry")) return route.fulfill({ json: { columns: ["timestamp", "latitude", "longitude", "east_smooth_m", "north_smooth_m", "speed_mps", "longitudinal_g", "lateral_g", "distance_m", "lap_number", "lap_distance_m", "valid", "altitude_m", "up_smooth_m"], rows, start_seconds: 0, end_seconds: 120 } });
     if (url.includes("/laps")) return route.fulfill({ json: [{ lap_number: 1, start_seconds: lapRanges[0][0], end_seconds: lapRanges[0][1], lap_time_seconds: lapRanges[0][1] - lapRanges[0][0], complete: lapCompleteness[0], excluded: !lapCompleteness[0], maximum_speed_mps: 30 }, { lap_number: 2, start_seconds: lapRanges[1][0], end_seconds: lapRanges[1][1], lap_time_seconds: lapRanges[1][1] - lapRanges[1][0] - 1, complete: lapCompleteness[1], excluded: !lapCompleteness[1], maximum_speed_mps: 31 }] });
     if (url.includes("/corners")) return route.fulfill({ json: [{ corner_id: "corner-1", name: "Turn 1", start_distance_m: 200, apex_distance_m: 250, end_distance_m: 300 }] });
-    if (url.includes("/comparison")) return route.fulfill({ json: { distance_m: [0, 100, 200], reference_time_s: [0, 4, 8], comparison_time_s: [0, 4.1, 7.9], delta_s: [0, .1, -.1], reference_speed_mps: [20, 25, 30], comparison_speed_mps: [20, 24, 31] } });
+    if (url.includes("/comparison")) return route.fulfill({ json: {
+      reference_lap: 1,
+      comparison_lap: 2,
+      distance_m: [0, 100, 200],
+      reference_time_s: [0, 4, 8],
+      comparison_time_s: [0, 4.1, 7.9],
+      delta_s: [0, .1, -.1],
+      reference_speed_mps: [20, 25, 30],
+      comparison_speed_mps: [20, 24, 31],
+      regions: [
+        { kind: "loss", start_distance_m: 0, end_distance_m: 100, delta_change_s: .1, peak_rate_s_per_m: .001 },
+        { kind: "gain", start_distance_m: 100, end_distance_m: 200, delta_change_s: -.2, peak_rate_s_per_m: .002 },
+      ],
+      corners: [{
+        corner_id: "corner-1",
+        name: "Turn 1",
+        start_distance_m: 80,
+        apex_distance_m: 100,
+        end_distance_m: 140,
+        time_impact_s: -.12,
+        reference_entry_speed_mps: 30,
+        comparison_entry_speed_mps: 28,
+        reference_apex_speed_mps: 22,
+        comparison_apex_speed_mps: 21,
+        reference_exit_speed_mps: 29,
+        comparison_exit_speed_mps: 31,
+        reference_peak_lateral_g: 1.2,
+        comparison_peak_lateral_g: 1.05,
+        reference_braking_distance_m: 40,
+        comparison_braking_distance_m: 30,
+      }],
+    } });
+    if (url.includes("/reference-lap")) {
+      const body = route.request().postDataJSON() as { reference_lap: number | null };
+      return route.fulfill({ json: { ...session, edits: { ...session.edits, reference_lap: body.reference_lap } } });
+    }
+    if (url.includes("/bookmarks")) {
+      const body = route.request().postDataJSON();
+      return route.fulfill({ json: { ...session, edits: { ...session.edits, bookmarks: body } } });
+    }
     if (url.endsWith("/status")) return route.fulfill({ json: { session_id: "demo", status: "ready", stage: "complete", progress: 1, message: "ready", error: null, updated_at: "2026-01-01T00:00:00Z" } });
     if (url.includes("/media/proxy")) return route.fulfill({ status: 404 });
     if (url.endsWith("/api/sessions/demo")) return route.fulfill({ json: session });
@@ -131,11 +170,9 @@ test("sync diagnostics are opt-in and track the nearest telemetry sample", async
 
 test("lap comparison failure is announced and can be retried", async ({ page }) => {
   await mockApi(page);
-  let attempts = 0;
+  let comparisonAvailable = false;
   await page.route("**/api/sessions/demo/comparison**", async (route) => {
-    attempts += 1;
-    // React StrictMode replays the initial effect in development.
-    if (attempts <= 2) return route.fulfill({ status: 503, json: { detail: "Comparison service unavailable" } });
+    if (!comparisonAvailable) return route.fulfill({ status: 503, json: { detail: "Comparison service unavailable" } });
     return route.fulfill({ json: {
       distance_m: [0, 100, 200],
       reference_time_s: [0, 4, 8],
@@ -149,6 +186,7 @@ test("lap comparison failure is announced and can be retried", async ({ page }) 
 
   const comparisonError = page.getByRole("alert").filter({ hasText: "Could not load lap comparison" });
   await expect(comparisonError).toContainText("Comparison service unavailable");
+  comparisonAvailable = true;
   await comparisonError.getByRole("button", { name: "Retry comparison" }).click();
   await expect(comparisonError).toHaveCount(0);
   await expect(page.locator(".comparison .telemetry-chart")).toHaveCount(2);
@@ -398,6 +436,8 @@ test("keyboard tab order is predictable and focused controls have a visible indi
   expect(focusStyle.outlineWidth).toBeGreaterThanOrEqual(2);
 
   await page.keyboard.press("Tab");
+  await expect(page.locator("header").getByRole("button", { name: "Export" })).toBeFocused();
+  await page.keyboard.press("Tab");
   await expect(page.locator("header").getByRole("button", { name: "Rebuild proxy" })).toBeFocused();
 
   const transport = page.getByRole("button", { name: "Play", exact: true });
@@ -495,4 +535,76 @@ test("desktop review panels resize with accessible splitters", async ({ page }, 
   const lapsAfter = await page.locator(".lap-panel").boundingBox();
   expect(lapsAfter?.height ?? 0).toBeGreaterThan(lapsBefore?.height ?? 0);
   expect(telemetryAfter?.height).toBe(telemetryBefore?.height);
+});
+
+test("comparison charts, delta regions, and corner cards seek the video clock", async ({ page }) => {
+  await mockApi(page);
+  await page.goto("/?session=demo");
+
+  await expect(page.getByLabel("Largest gain and loss regions")).toContainText("LOSS");
+  await expect(page.getByLabel("Largest gain and loss regions")).toContainText("GAIN");
+  await expect(page.getByLabel("Corner comparison ranked by time impact")).toContainText("Turn 1");
+  await expect(page.getByLabel("Corner comparison ranked by time impact")).toContainText("Entry");
+  await expect(page.locator(".comparison .telemetry-chart")).toHaveCount(2);
+
+  await page.getByRole("button", { name: /LOSS/ }).click();
+  await expect.poll(() => page.locator("video").evaluate((video) => (video as HTMLVideoElement).currentTime)).toBeLessThan(2);
+  await page.getByRole("button", { name: /GAIN/ }).click();
+  await expect.poll(() => page.locator("video").evaluate((video) => (video as HTMLVideoElement).currentTime)).toBeGreaterThan(3);
+  await page.getByRole("button", { name: "Turn 1" }).click();
+  await expect.poll(() => page.locator("video").evaluate((video) => (video as HTMLVideoElement).currentTime)).toBeGreaterThan(2);
+});
+
+test("bookmarks, notes, tags, and clip ranges persist for the session", async ({ page }) => {
+  await mockApi(page);
+  let saved: unknown = null;
+  await page.route("**/api/sessions/demo/bookmarks", async (route) => {
+    saved = route.request().postDataJSON();
+    return route.fulfill({ json: { ...session, edits: { ...session.edits, bookmarks: saved } } });
+  });
+  await page.goto("/?session=demo");
+
+  await page.getByRole("button", { name: /Add at/ }).click();
+  await expect.poll(() => Array.isArray(saved) && saved.length === 1).toBe(true);
+  await page.getByLabel("Bookmark label").fill("Turn in");
+  await page.getByLabel("Bookmark note").fill("Late apex");
+  await page.getByLabel("Bookmark tags").fill("braking, notes");
+  await page.getByLabel("Bookmark tags").blur();
+  await page.getByRole("button", { name: "Mark in" }).click();
+  await page.getByRole("button", { name: "Mark out" }).click();
+  await expect.poll(() => {
+    const bookmarks = saved as Array<{ label: string; note: string; tags: string[]; clip: { start_seconds: number; end_seconds: number } | null }>;
+    const bookmark = bookmarks?.[0];
+    return bookmark?.label === "Turn in" && bookmark.note === "Late apex" && bookmark.tags.includes("braking") && bookmark.clip != null;
+  }).toBe(true);
+  await expect(page.locator(".marker--bookmark")).toHaveCount(1);
+});
+
+test("reference lap preference is persisted per session", async ({ page }) => {
+  await mockApi(page);
+  let saved: unknown = null;
+  await page.route("**/api/sessions/demo/reference-lap", async (route) => {
+    saved = route.request().postDataJSON();
+    return route.fulfill({ json: { ...session, edits: { ...session.edits, ...(saved as object) } } });
+  });
+  await page.goto("/?session=demo");
+  await page.getByLabel("Reference").selectOption("2");
+  await expect.poll(() => saved).toEqual({ reference_lap: 2 });
+});
+
+test("theater mode enlarges video without hiding gauges or comparison", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Theater layout is a desktop review mode");
+  await mockApi(page);
+  await page.goto("/?session=demo");
+
+  const stage = page.locator(".video-stage");
+  const before = await stage.boundingBox();
+  await page.getByRole("button", { name: "Theater mode" }).click();
+  await expect(page.locator(".review-shell")).toHaveAttribute("data-theater", "true");
+  const after = await stage.boundingBox();
+  expect((after?.height ?? 0)).toBeGreaterThan(before?.height ?? 0);
+  await expect(page.getByLabel("Live telemetry")).toBeVisible();
+  await expect(page.getByLabel("Telemetry context")).toBeVisible();
+  await expect(page.locator(".comparison .telemetry-chart")).toHaveCount(2);
+  await expect(page.getByRole("button", { name: "Fullscreen video" })).toBeVisible();
 });

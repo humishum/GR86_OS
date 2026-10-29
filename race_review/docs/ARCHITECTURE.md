@@ -51,9 +51,11 @@ FastAPI / ImportService ─────── SQLite catalog + session manifest
 | `analysis.py` | GPS validation, ENU projection, smoothing, kinematics, lap/corner analysis, calibration, and comparisons. |
 | `proxy.py` | Proxy signature/cache, CUDA capability probe, FFmpeg command construction, progress parsing, fallback, and thumbnails. |
 | `ingest.py` | Single-worker import orchestration, progress persistence, checkpoints, and deterministic artifact production. |
-| `catalog.py` | SQLite sessions, chapter identities, jobs, and edits. |
-| `storage.py` | Atomic JSON and Parquet writes. |
-| `export.py` | CSV/JSON analysis-bundle assembly. |
+| `catalog.py` | SQLite runtime catalog, session identity, jobs, edits, and dual-write checkpoints. |
+| `migrations.py` | Manifest schema upgrades and additive v1 compatibility patches. |
+| `maintenance.py` | Catalog repair, session archive/restore/delete, backup, and artifact cleanup. |
+| `storage.py` | Atomic JSON and Parquet writes plus streaming file hashes. |
+| `export.py` | Provenanced analysis ZIP with streamed Parquet-to-CSV conversion. |
 | `api.py` | FastAPI routes, time-windowed telemetry, edits, range responses, export, and frontend serving. |
 | React frontend | Session import/library, video-led review, maps, charts, controls, and editing surfaces. |
 
@@ -165,6 +167,7 @@ are derived in [Track, Lap, and Corner Analysis](TRACK_ANALYSIS.md).
 ```text
 var/
 ├── catalog.sqlite3
+├── backups/catalog-YYYYMMDDTHHMMSSZ.sqlite3
 └── sessions/<session-id>/
     ├── manifest.json
     ├── telemetry/
@@ -185,8 +188,15 @@ var/
 ```
 
 SQLite is the runtime catalog and edit store. The same manifest is atomically written
-to the session directory as a portable processing record/checkpoint. Large tabular
-artifacts live in Parquet rather than SQLite. `var/` is gitignored.
+to the session directory as a portable processing record/checkpoint. Writes always go
+to SQLite first, then the file is rewritten from the same in-memory object while the
+catalog write lock is held. Cleanup reserves database writes while checking session
+statuses and removing regenerable files; running imports, unregistered directories,
+and unreadable or unsupported manifests are skipped for recovery. Repair on
+startup (and `POST /api/catalog/repair`) restores missing SQLite rows from valid files,
+rewrites missing files from SQLite, and resolves conflicts by `updated_at` unless the
+SQLite session is queued/processing/cancelling, in which case SQLite always wins. Large
+tabular artifacts live in Parquet rather than SQLite. `var/` is gitignored.
 
 Source recordings are referenced in place. A source identity combines resolved path,
 size, modification time, and SHA-256. Routine stale checks use size and modification
@@ -228,19 +238,32 @@ schema match.
 | `GET /api/sessions/{id}/telemetry` | Field-selectable, bounded, downsampled telemetry window. |
 | `GET /api/sessions/{id}/laps` | Lap summaries. |
 | `GET /api/sessions/{id}/corners` | Corner summaries. |
-| `GET /api/sessions/{id}/comparison` | Distance-aligned two-lap traces and delta. |
+| `GET /api/sessions/{id}/comparison` | Distance-aligned two-lap traces, delta, gain/loss regions, and ranked corner cards. |
 | `GET /api/sessions/{id}/track-geometry` | WGS84 plus right-handed ENU handoff boundary. |
 | `PUT /api/sessions/{id}/track` | Persist track configuration and reanalyze. |
 | `PUT /api/sessions/{id}/calibration` | Persist manual axis calibration. |
+| `PUT /api/sessions/{id}/display-units` | Persist display-unit choices. |
+| `PUT /api/sessions/{id}/reference-lap` | Persist the session reference-lap preference. |
+| `PUT /api/sessions/{id}/bookmarks` | Persist bookmarks, notes, tags, and clip ranges. |
 | `PUT /api/sessions/{id}/corners` | Persist corner edits and reanalyze. |
 | `POST /api/sessions/{id}/reanalyze` | Rebuild editable analysis artifacts. |
+| `POST /api/sessions/{id}/archive` | Soft-delete a session while keeping artifacts. |
+| `POST /api/sessions/{id}/restore` | Restore an archived session. |
+| `DELETE /api/sessions/{id}?confirm={id}` | Permanently delete an archived session after id confirmation. |
+| `POST /api/catalog/backup` | Copy the SQLite catalog to `var/backups/`. |
+| `POST /api/catalog/cleanup` | Remove regenerable export copies and leftover partial files. |
+| `POST /api/catalog/repair` | Reconcile SQLite rows with session-dir checkpoints. |
 | `GET /api/sessions/{id}/media/proxy` | Byte-range proxy media. |
 | `GET /api/sessions/{id}/thumbnail` | Session thumbnail. |
 | `POST /api/sessions/{id}/export` | Build and stream an analysis ZIP. |
 
 Pydantic response models feed the OpenAPI schema; frontend API types are generated from
 that schema. Artifact and media responses validate resolved paths and implement explicit
-single-range HTTP responses for deterministic browser seeking.
+single-range HTTP responses for deterministic browser seeking. Manifest JSON is loaded
+through `migrate_manifest_payload` so schema version 2 cannot ship without a registered
+migration. Analysis ZIP exports include `provenance.json` (application version, FFmpeg
+version, proxy backend/profile, and processing fingerprints) and stream Parquet to CSV
+without loading each table fully into memory.
 
 ## Frontend architecture
 
@@ -254,7 +277,8 @@ Feature components receive data and callbacks rather than accessing global store
   color-coded extrusion ribbon, and updates only the position source during playback;
 - `TelemetryChart` owns uPlot lifecycle, resizing, cursor position, and visible readout;
 - `Scrubber` maps canonical time to controls and event markers;
-- `LapPanel` requests distance-aligned comparisons;
+- `LapPanel` requests distance-aligned comparisons, gain/loss summaries, and corner cards;
+- `ReviewNotes` persists bookmarks, notes, tags, and clip ranges;
 - `EditPanel` persists track, corner, and calibration overrides.
 
 MapLibre runs with a route-only local style by default. An optional raster tile URL can
@@ -280,10 +304,21 @@ of allowing the map exception to unmount the review screen.
 
 - Unit and synthetic analysis tests cover timing, gaps, GPS filtering, crossings,
   edits, calibration, comparisons, storage, proxy commands, cache identity, and ranges.
-- API contract tests exercise typed endpoints and edit persistence.
-- Playwright covers desktop/mobile review rendering and video-clock-driven state.
-- The 4 GB GoPro integration test is opt-in through `RACE_REVIEW_GOPRO_SAMPLE`.
+- API contract tests exercise every edit action plus 404/409/422 error responses.
+- Catalog tests cover SQLite/file-manifest repair, archive/restore/delete confirmation,
+  backup, and artifact cleanup.
+- Playwright covers desktop/mobile review rendering, video-clock-driven state, the
+  library archive/delete confirmation workflow, and seek/map performance budgets.
+- GitHub Actions runs Ruff, pytest, the TypeScript production build, and Playwright on
+  Ubuntu and macOS using generated CPU H.264 fixtures.
+- NVIDIA CUDA/NVENC validation is opt-in through `RACE_REVIEW_NVIDIA=1`.
+- The 4 GB GoPro integration test is opt-in through `RACE_REVIEW_GOPRO_SAMPLE` and is
+  part of the local [release checklist](RELEASE.md).
 - Frontend production builds enforce TypeScript correctness.
+
+Manifest `schema_version`, `ANALYSIS_VERSION`, `PROXY_PROFILE`, and
+`PROXY_CACHE_VERSION` are independent. Bump rules and changelog requirements are in
+[Release notes](RELEASE.md). Performance ceilings are in [Performance budgets](PERFORMANCE.md).
 
 Known gaps and planned work are tracked in [TODO.md](../TODO.md) and
 [ROADMAP.md](ROADMAP.md).

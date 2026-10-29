@@ -12,6 +12,8 @@ from .config import Settings
 from .models import SessionManifest
 from .storage import atomic_json
 
+# Bump PROXY_PROFILE when encode settings change and PROXY_CACHE_VERSION when
+# cache identity changes. See docs/RELEASE.md.
 PROXY_PROFILE = "h264-1080p60-aac-gop2s-v3"
 PROXY_CACHE_VERSION = 1
 logger = logging.getLogger(__name__)
@@ -287,9 +289,7 @@ def generate_proxy(
         settings,
         use_cuda=backend == "cuda",
     )
-    return_code, output_lines = _run_proxy_command(
-        command, manifest, on_progress, should_cancel
-    )
+    return_code, output_lines = _run_proxy_command(command, manifest, on_progress, should_cancel)
     if return_code == 130 and should_cancel is not None and should_cancel():
         partial.unlink(missing_ok=True)
         raise ProxyCancelled("Proxy transcode cancelled")

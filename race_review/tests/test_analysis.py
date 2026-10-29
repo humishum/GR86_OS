@@ -4,12 +4,15 @@ import math
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from race_review.analysis import (
     apply_corner_edits,
     assign_lap_distance,
     build_laps,
     build_reference_centerline,
+    compare_corners,
+    compare_laps,
     derive_kinematics,
     detect_corners,
     filter_gps,
@@ -17,6 +20,7 @@ from race_review.analysis import (
     line_crossings,
     project_laps_to_centerline,
     project_wgs84_to_enu,
+    summarize_delta_regions,
 )
 from race_review.models import CornerSummary, LinePoint, TrackConfig
 
@@ -191,3 +195,60 @@ def test_corner_edit_rename_split_and_merge() -> None:
     assert len(merged) == 1
     assert merged[0].start_distance_m == 100
     assert merged[0].end_distance_m == 180
+
+
+def two_lap_comparison_frame() -> pd.DataFrame:
+    distance = np.linspace(0, 400, 41)
+    reference_time = np.linspace(0, 40, 41)
+    comparison_elapsed = np.concatenate([np.linspace(0, 22, 21), np.linspace(22, 39, 20)])
+    comparison_time = 50 + comparison_elapsed
+    rows = []
+    for lap_number, timestamps in ((1, reference_time), (2, comparison_time)):
+        for index, (stamp, lap_distance) in enumerate(zip(timestamps, distance, strict=True)):
+            braking = -0.4 if 40 <= lap_distance <= 90 else 0.05
+            lateral = 1.2 if 80 <= lap_distance <= 140 else 0.1
+            if lap_number == 2 and 80 <= lap_distance <= 140:
+                lateral = 0.9
+            rows.append(
+                {
+                    "timestamp": float(stamp),
+                    "lap_number": lap_number,
+                    "lap_distance_m": float(lap_distance),
+                    "speed_mps": 12.0 if lap_number == 1 else (9.0 if index < 21 else 14.0),
+                    "lateral_g": lateral,
+                    "longitudinal_g": braking,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def test_compare_laps_ranks_gain_loss_and_corner_time_impact() -> None:
+    comparison = compare_laps(two_lap_comparison_frame(), 1, 2, points=41)
+    assert comparison.delta_s[-1] == pytest.approx(-1.0, abs=0.05)
+    regions = summarize_delta_regions(comparison.distance_m, comparison.delta_s)
+    assert any(item.kind == "loss" and item.delta_change_s > 0.5 for item in regions)
+    assert any(item.kind == "gain" and item.delta_change_s < -0.5 for item in regions)
+    assert abs(regions[0].delta_change_s) == max(abs(item.delta_change_s) for item in regions)
+    corners = compare_corners(
+        comparison,
+        [
+            CornerSummary(
+                corner_id="corner-1",
+                name="Turn 1",
+                start_distance_m=80,
+                apex_distance_m=110,
+                end_distance_m=140,
+            ),
+            CornerSummary(
+                corner_id="corner-2",
+                name="Turn 2",
+                start_distance_m=240,
+                apex_distance_m=280,
+                end_distance_m=320,
+            ),
+        ],
+    )
+    assert [corner.corner_id for corner in corners] == ["corner-2", "corner-1"]
+    assert corners[0].time_impact_s < corners[1].time_impact_s
+    assert corners[1].reference_peak_lateral_g == pytest.approx(1.2, abs=0.05)
+    assert corners[1].comparison_braking_distance_m is not None

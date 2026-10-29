@@ -13,6 +13,7 @@ import pandas as pd
 
 from . import __version__
 from .analysis import (
+    ANALYSIS_VERSION,
     apply_corner_edits,
     build_laps,
     build_reference_centerline,
@@ -27,6 +28,7 @@ from .analysis import (
 from .catalog import Catalog
 from .config import Settings
 from .media import fingerprint, probe_media, telemetry_packet_count
+from .migrations import CURRENT_SCHEMA_VERSION
 from .models import ChapterManifest, ImportRequest, ProcessingStage, SessionManifest
 from .proxy import PROXY_PROFILE, ProxyCancelled, generate_proxy, generate_thumbnail
 from .storage import atomic_json, write_parquet
@@ -120,8 +122,8 @@ class ImportService:
             chapters=chapters,
             processing_versions={
                 "race_review": __version__,
-                "analysis": "1",
-                "manifest": "1",
+                "analysis": ANALYSIS_VERSION,
+                "manifest": str(CURRENT_SCHEMA_VERSION),
                 "gopropy": GOPROPY_REVISION,
             },
             processing_options={
@@ -166,9 +168,7 @@ class ImportService:
         self, session_id: str, chapter_index: int, candidate: str
     ) -> SessionManifest:
         manifest = self.catalog.get_manifest(session_id)
-        chapter = next(
-            (item for item in manifest.chapters if item.index == chapter_index), None
-        )
+        chapter = next((item for item in manifest.chapters if item.index == chapter_index), None)
         if chapter is None:
             raise ValueError(f"Chapter {chapter_index} does not exist")
         path = self.settings.resolve_media(candidate)
@@ -179,9 +179,7 @@ class ImportService:
         chapter.filename = path.name
         stale_prefix = "Source is missing or stale:"
         manifest.warnings = [
-            warning
-            for warning in manifest.warnings
-            if not warning.startswith(stale_prefix)
+            warning for warning in manifest.warnings if not warning.startswith(stale_prefix)
         ]
         self._save(manifest)
         return manifest
@@ -218,6 +216,10 @@ class ImportService:
         self._executor.submit(self._guarded_rebuild_proxy, session_id)
         return manifest
 
+    def is_running(self, session_id: str) -> bool:
+        with self._lock:
+            return session_id in self._running
+
     def _is_cancelled(self, session_id: str) -> bool:
         with self._lock:
             event = self._cancel_events.get(session_id)
@@ -247,9 +249,7 @@ class ImportService:
         )
         self._save(manifest)
 
-    def _set_stage_backend(
-        self, manifest: SessionManifest, stage: str, backend: str
-    ) -> None:
+    def _set_stage_backend(self, manifest: SessionManifest, stage: str, backend: str) -> None:
         attempts = manifest.processing_stages.get(stage, [])
         if attempts and attempts[-1].status == "running":
             attempts[-1].backend = backend
@@ -334,9 +334,7 @@ class ImportService:
         try:
             manifest = self.catalog.get_manifest(session_id)
             session_dir = self.settings.session_dir(session_id)
-            self._start_stage(
-                manifest, "proxy", command_profile=PROXY_PROFILE
-            )
+            self._start_stage(manifest, "proxy", command_profile=PROXY_PROFILE)
             self.catalog.set_job(
                 session_id,
                 status="processing",
@@ -355,9 +353,7 @@ class ImportService:
                     progress=completed,
                     message=f"Rebuilding browser proxy · {round(completed * 100)}%",
                 ),
-                on_backend=lambda backend: self._set_stage_backend(
-                    manifest, "proxy", backend
-                ),
+                on_backend=lambda backend: self._set_stage_backend(manifest, "proxy", backend),
                 should_cancel=lambda: self._is_cancelled(session_id),
                 force=True,
             )
@@ -380,7 +376,10 @@ class ImportService:
             manifest.status = "cancelled"
             self._save(manifest)
             self.catalog.set_job(
-                session_id, status="cancelled", stage="cancelled", progress=1,
+                session_id,
+                status="cancelled",
+                stage="cancelled",
+                progress=1,
                 message="Proxy rebuild cancelled",
             )
         except Exception as exc:
@@ -392,24 +391,24 @@ class ImportService:
             manifest.warnings.append(str(exc))
             self._save(manifest)
             self.catalog.set_job(
-                session_id, status="failed", stage="failed", progress=1,
-                message=str(exc), error=str(exc),
+                session_id,
+                status="failed",
+                stage="failed",
+                progress=1,
+                message=str(exc),
+                error=str(exc),
             )
         finally:
             with self._lock:
                 self._running.discard(session_id)
 
     def _save(self, manifest: SessionManifest) -> None:
-        session_dir = self.settings.session_dir(manifest.session_id)
-        self.catalog.save_manifest(manifest)
-        atomic_json(session_dir / "manifest.json", manifest.model_dump(mode="json"))
+        self.catalog.persist_manifest(manifest, self.settings.session_dir(manifest.session_id))
 
-    def _analysis_artifacts_current(
-        self, manifest: SessionManifest, session_dir: Path
-    ) -> bool:
+    def _analysis_artifacts_current(self, manifest: SessionManifest, session_dir: Path) -> bool:
         if (
             manifest.processing_versions.get("gopropy") != GOPROPY_REVISION
-            or manifest.processing_versions.get("analysis") != "1"
+            or manifest.processing_versions.get("analysis") != ANALYSIS_VERSION
         ):
             return False
         required = {
@@ -436,12 +435,10 @@ class ImportService:
             return False
         return bool(manifest.streams)
 
-    def _extract_and_analyze(
-        self, manifest: SessionManifest, session_dir: Path
-    ) -> SessionManifest:
+    def _extract_and_analyze(self, manifest: SessionManifest, session_dir: Path) -> SessionManifest:
         session_id = manifest.session_id
         manifest.processing_versions["gopropy"] = GOPROPY_REVISION
-        manifest.processing_versions["analysis"] = "1"
+        manifest.processing_versions["analysis"] = ANALYSIS_VERSION
         self._start_stage(
             manifest,
             "telemetry",

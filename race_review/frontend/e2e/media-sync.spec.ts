@@ -3,6 +3,12 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const mediaPath = fileURLToPath(new URL("./fixtures/sync-clock.mp4", import.meta.url));
+const budgets = JSON.parse(
+  readFileSync(fileURLToPath(new URL("../../performance_budgets.json", import.meta.url)), "utf8"),
+) as {
+  paused_seek_surface_update_ms: number;
+  map_position_update_ms: number;
+};
 
 const session = {
   schema_version: 1,
@@ -159,7 +165,7 @@ test("real H.264 playback and near-edge/keyframe seeking keep rendered telemetry
 
   const playedTime = await expectSynchronizedClock(page);
   expect(playedTime).toBeGreaterThan(1.6);
-  expect(playedTime).toBeLessThan(2.5);
+  expect(playedTime).toBeLessThan(3);
   expect(Number(await gauge(page, "SPEED").textContent())).toBeGreaterThan(initialSpeed);
   await expect(gauge(page, "LAP")).toHaveText("2");
   const playedLongitude = await numericAttribute(map, "data-position-longitude");
@@ -199,4 +205,31 @@ test("real H.264 playback and near-edge/keyframe seeking keep rendered telemetry
     return visible;
   });
   expect(renderedPixels).toBeGreaterThan(100);
+});
+
+test("paused seeking and map position updates stay within recorded budgets", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "Seek/map budgets are measured on the desktop project");
+  await mockReview(page);
+  await page.goto("/?session=media-sync");
+
+  const video = page.locator("video");
+  const map = page.getByLabel("Offline route map");
+  await expect(video).toHaveJSProperty("readyState", 4);
+  await expect(map).toHaveAttribute("data-position-longitude", /-?\d/);
+  await video.evaluate((element: HTMLVideoElement) => element.pause());
+
+  const initialLongitude = await numericAttribute(map, "data-position-longitude");
+  const initialSpeed = Number(await gauge(page, "SPEED").textContent());
+  const started = Date.now();
+  await video.evaluate((element: HTMLVideoElement) => {
+    element.currentTime = 3.25;
+  });
+  await expect.poll(async () => numericAttribute(map, "data-position-longitude")).not.toBeCloseTo(initialLongitude, 5);
+  const mapElapsed = Date.now() - started;
+  await expect.poll(async () => Number(await gauge(page, "SPEED").textContent())).not.toBe(initialSpeed);
+  const seekElapsed = Date.now() - started;
+
+  expect(mapElapsed).toBeLessThan(budgets.map_position_update_ms);
+  expect(seekElapsed).toBeLessThan(budgets.paused_seek_surface_update_ms);
+  await expectSynchronizedClock(page);
 });

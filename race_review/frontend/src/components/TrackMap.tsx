@@ -7,7 +7,14 @@ import { DEFAULT_DISPLAY_UNITS, displayDistance, distanceUnitLabel } from "../di
 import { buildElevationProfile, projectElevationRoute } from "../trackGeometry";
 import type { CornerSummary, DisplayUnits, TrackConfig } from "../types";
 
-type Props = { samples: TelemetrySample[]; current: TelemetrySample | null; corners: CornerSummary[]; track: TrackConfig; units?: DisplayUnits };
+type Props = {
+  samples: TelemetrySample[];
+  current: TelemetrySample | null;
+  ghost?: TelemetrySample | null;
+  corners: CornerSummary[];
+  track: TrackConfig;
+  units?: DisplayUnits;
+};
 type LapStyle = { color: string; visible: boolean };
 
 const LAP_COLORS = ["#ff5038", "#35b7c8", "#ffb238", "#ad7cff", "#7ed47e", "#f2f5f6"];
@@ -49,7 +56,7 @@ function bearingBetween(first: TelemetrySample | undefined, second: TelemetrySam
   return Math.atan2(y, x) * 180 / Math.PI;
 }
 
-export function TrackMap({ samples, current, corners, track, units = DEFAULT_DISPLAY_UNITS }: Props) {
+export function TrackMap({ samples, current, ghost = null, corners, track, units = DEFAULT_DISPLAY_UNITS }: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const boundsRef = useRef<maplibregl.LngLatBounds | null>(null);
@@ -116,6 +123,10 @@ export function TrackMap({ samples, current, corners, track, units = DEFAULT_DIS
           type: "geojson" as const,
           data: { type: "Feature" as const, properties: {}, geometry: { type: "Point" as const, coordinates: coordinates[0] } },
         },
+        ghost: {
+          type: "geojson" as const,
+          data: { type: "Feature" as const, properties: {}, geometry: { type: "Point" as const, coordinates: coordinates[0] } },
+        },
         corners: { type: "geojson", data: cornerData },
         start: { type: "geojson", data: lineData },
         elevation: { type: "geojson", data: elevation.ribbon },
@@ -142,6 +153,7 @@ export function TrackMap({ samples, current, corners, track, units = DEFAULT_DIS
         { id: "route", type: "line" as const, source: "route", paint: { "line-color": ["get", "color"], "line-width": 3, "line-opacity": ["*", .82, ["get", "visible"]] } },
         { id: "start", type: "line", source: "start", paint: { "line-color": "#f8f9f9", "line-width": 3 } },
         { id: "corners", type: "circle", source: "corners", paint: { "circle-color": "#ffb238", "circle-radius": 4, "circle-stroke-color": "#111", "circle-stroke-width": 1 } },
+        { id: "ghost", type: "circle" as const, source: "ghost", paint: { "circle-color": "#35b7c8", "circle-radius": 6, "circle-stroke-color": "#111", "circle-stroke-width": 2, "circle-opacity": 0 } },
         { id: "position", type: "circle" as const, source: "position", paint: { "circle-color": "#ff5038", "circle-radius": 7, "circle-stroke-color": "#fff", "circle-stroke-width": 2 } },
     ];
     const tileUrl = localStorage.getItem("race-review-map-tiles");
@@ -278,6 +290,35 @@ export function TrackMap({ samples, current, corners, track, units = DEFAULT_DIS
     else map.once("load", updatePosition);
     return () => { map.off("load", updatePosition); };
   }, [current, followMode, headingUp, samples]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const updateGhost = () => {
+      const source = map.getSource("ghost") as GeoJSONSource | undefined;
+      if (!source) return;
+      const visible = ghost && typeof ghost.longitude === "number" && typeof ghost.latitude === "number";
+      source.setData({
+        type: "Feature",
+        properties: {},
+        geometry: {
+          type: "Point",
+          coordinates: visible ? [ghost.longitude as number, ghost.latitude as number] : [0, 0],
+        },
+      });
+      if (map.getLayer("ghost")) map.setPaintProperty("ghost", "circle-opacity", visible ? 1 : 0);
+      if (visible) {
+        container.current?.setAttribute("data-ghost-longitude", String(ghost.longitude));
+        container.current?.setAttribute("data-ghost-latitude", String(ghost.latitude));
+      } else {
+        container.current?.removeAttribute("data-ghost-longitude");
+        container.current?.removeAttribute("data-ghost-latitude");
+      }
+    };
+    if (map.isStyleLoaded()) updateGhost();
+    else map.once("load", updateGhost);
+    return () => { map.off("load", updateGhost); };
+  }, [ghost]);
 
   const altitude = telemetryNumber(current?.altitude_m);
   return <div

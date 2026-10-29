@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -24,3 +25,11 @@ def write_parquet(frame: pd.DataFrame, path: Path) -> None:
 
 def read_parquet(path: Path, columns: list[str] | None = None) -> pd.DataFrame:
     return pd.read_parquet(path, columns=columns, engine="pyarrow")
+
+
+def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while block := handle.read(chunk_size):
+            digest.update(block)
+    return digest.hexdigest()

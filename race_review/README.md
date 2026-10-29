@@ -8,6 +8,9 @@ Local-first GoPro session review. Source MP4s are fingerprinted and referenced i
 - [Product and interface design](docs/DESIGN.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Active TODO list](TODO.md)
+- [Release checklist and versioning](docs/RELEASE.md)
+- [Performance budgets](docs/PERFORMANCE.md)
+- [Changelog](CHANGELOG.md)
 
 ## Requirements
 
@@ -59,12 +62,16 @@ Import ordered chapters from the CLI and optionally defer the expensive proxy tr
 
 ```bash
 uv run race-review import --media-root ../data --skip-proxy ../data/GX020115.MP4
+uv run race-review backup
+uv run race-review repair
+uv run race-review cleanup --dry-run
 ```
 
 ## Storage and timing
 
-- `var/catalog.sqlite3`: sessions, jobs, source identities, and user edits.
-- `var/sessions/<id>/manifest.json`: versioned, portable analysis manifest.
+- `var/catalog.sqlite3`: sessions, jobs, source identities, and user edits. SQLite is the runtime catalog authority.
+- `var/sessions/<id>/manifest.json`: versioned portable checkpoint; repair restores a missing catalog row from this file.
+- `var/backups/`: timestamped SQLite catalog copies.
 - `var/sessions/<id>/telemetry/*.parquet`: native and derived SI telemetry.
 - `var/sessions/<id>/analysis/`: lap, corner, and quality diagnostics.
 - `var/sessions/<id>/media/proxy.mp4`: cached H.264/AAC 1080p60 proxy with two-second GOPs and fast-start metadata.
@@ -85,9 +92,14 @@ The `TrackGeometryAdapter` schema intentionally stops at WGS84 plus right-handed
 
 ## Verification
 
+CI runs Ruff, pytest, the TypeScript production build, and Playwright on Ubuntu and
+macOS. Locally:
+
 ```bash
+uv run ruff check src tests scripts
 uv run pytest
 cd frontend
+npm test
 npm run build
 npm run test:e2e
 ```
@@ -97,5 +109,13 @@ Playwright generates its four-second H.264 fixture with FFmpeg before the suite.
 regression. Failed browser tests retain a screenshot, video, and trace below
 `frontend/test-results/`.
 
+Pytest generates a two-second H.264/AAC fixture for CPU proxy, thumbnail, and
+performance-budget tests. NVIDIA CUDA/NVENC validation is opt-in:
+
+```bash
+RACE_REVIEW_NVIDIA=1 uv run pytest -m nvidia
+```
+
 The 4 GB sample integration test is opt-in via `RACE_REVIEW_GOPRO_SAMPLE`; normal tests do
-not transcode it.
+not transcode it. The full assertion list and release steps are in
+[the release checklist](docs/RELEASE.md).

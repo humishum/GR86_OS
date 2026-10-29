@@ -84,6 +84,7 @@ only representation of a critical state.
 ## Video and controls
 
 - Click/tap the video or transport control to toggle playback.
+- Theater and fullscreen keep gauges and a compact telemetry readout with the video.
 - A browser-compatible original chapter is preferred for one-chapter sessions; a source
   loading error falls back to the compatibility proxy.
 - Multi-chapter sessions always use the proxy to preserve one continuous media clock.
@@ -94,8 +95,9 @@ only representation of a critical state.
 - Two-second proxy keyframes balance seek latency and output efficiency.
 
 Comma/period step one proxy frame; bracket keys navigate laps; semicolon/quote navigate
-corner events; transport buttons expose adjacent frames and events. Play, pause, and
-ended media events update transport icons independently of telemetry renders.
+corner events; T toggles theater mode; F toggles fullscreen of the video stage. Transport
+buttons expose adjacent frames and events. Play, pause, and ended media events update
+transport icons independently of telemetry renders.
 
 ## Gauges
 
@@ -105,7 +107,7 @@ The live overlay prioritizes:
 2. GPS-derived longitudinal g;
 3. GPS-derived lateral g;
 4. current lap;
-5. delta to the fastest complete, non-excluded reference lap.
+5. delta to the saved session reference lap, or the fastest complete, non-excluded lap.
 
 Values are interpolated at video time. Lap number remains discrete. Missing numeric
 values render as an em dash so they cannot be confused with a measured zero.
@@ -122,10 +124,9 @@ MapLibre renders a local GeoJSON style with no external dependency:
 - optional raster tiles may be configured locally.
 
 The route opens in a pitched 3D camera and supports pan, rotation/tilt, full-route reset,
-a top-down view, and explicit 1×/3× vertical exaggeration. Follow/ego camera modes,
-heading-up rotation, and selectable lap isolation remain roadmap work. A
-software-projected elevation route replaces the canvas if WebGL initialization fails so
-other review surfaces remain available.
+a top-down view, 1×/3× vertical exaggeration, follow mode, heading-up rotation, and
+per-lap visibility/color. A software-projected elevation route replaces the canvas if
+WebGL initialization fails so other review surfaces remain available.
 
 ## Telemetry charts
 
@@ -135,15 +136,33 @@ speed, lateral g, and longitudinal g against canonical seconds. Each chart reser
 The built-in legend is disabled because its unconstrained layout could be clipped by the
 persistent transport.
 
-The main chart currently shows the whole session. Cursor-following windows, zooming,
-pan/selection, linked track-distance cursors, and independently scaled g/speed axes are
-planned improvements.
+The main chart shows the whole session with zoom, pan, selection, and an optional
+moving time window. Comparison speed and delta traces share a track-distance cursor
+with video seek, the route marker, and a ghosted position for the other lap.
 
 ## Lap and corner editing
 
 Lap rows seek to lap starts. Complete, non-excluded laps populate reference/comparison
 selectors. Comparison traces are aligned by lap distance rather than wall-clock time,
-and delta is calculated from the distance-aligned elapsed times.
+and delta is calculated from the distance-aligned elapsed times. Hovering or clicking a
+comparison chart, delta region, or corner card seeks the video to the matching distance
+on the lap currently in view. The largest gain and loss regions and corner cards ranked
+by time impact sit under the traces. The selected reference lap persists per session
+and drives the live delta gauge.
+
+Bookmarks store a timestamp, label, note, tags, and optional in/out clip range on the
+session. They appear on the timeline and export with the analysis bundle. Export is
+available from the library card and the review header; the ZIP includes application
+version, FFmpeg version, proxy backend/profile, and processing fingerprints.
+
+The library archives a session after an explicit confirmation, then keeps it recoverable
+until the driver types the session id and permanently deletes it. Catalog backup and
+artifact cleanup live on the library header; cleanup asks before removing regenerable
+export copies and leftover partial transcodes.
+
+Theater mode enlarges the video column while keeping gauges, route, charts, and
+comparison visible. Fullscreen uses the video stage so gauges and a compact lap/corner
+readout stay with the frame.
 
 The Tune drawer owns user overrides:
 
@@ -184,8 +203,10 @@ timeline, playback rate, route map, gauges, and play/pause action. Contrast is g
 high, and information is not encoded solely by route color because lap/corner tables
 remain textual.
 
-Remaining work includes complete keyboard operation, visible focus states, reduced
-motion handling, chart summaries for assistive technology, and stronger touch targets.
+Review keyboard shortcuts, `:focus-visible` styling, reduced-motion handling for CSS and
+MapLibre, the analysis drawer as a keyboard-contained modal, and chart/map text summaries
+are in place. Remaining accessibility work is stronger touch targets on dense mobile
+controls.
 
 ## Design decisions
 
@@ -198,9 +219,9 @@ private driving footage local.
 ### Compatibility proxy plus preserved source
 
 H.264/AAC is the deterministic browser baseline and creates one continuous media clock
-for multiple chapters. Modern HEVC-capable devices could avoid this cost for a single
-chapter; capability-driven direct-source playback is planned as an optimization, with
-the proxy retained as fallback.
+for multiple chapters. One-chapter sessions prefer a browser-compatible original,
+including an explicit `hvc1` capability check for HEVC, and fall back to the proxy on a
+media loading error.
 
 ### SQLite plus Parquet
 

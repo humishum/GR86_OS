@@ -83,7 +83,8 @@ export interface paths {
         get: operations["session_api_sessions__session_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** Remove Session */
+        delete: operations["remove_session_api_sessions__session_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -311,6 +312,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sessions/{session_id}/reference-lap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Reference Lap */
+        put: operations["update_reference_lap_api_sessions__session_id__reference_lap_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{session_id}/bookmarks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Update Bookmarks */
+        put: operations["update_bookmarks_api_sessions__session_id__bookmarks_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/sessions/{session_id}/reanalyze": {
         parameters: {
             query?: never;
@@ -322,6 +357,91 @@ export interface paths {
         put?: never;
         /** Reanalyze */
         post: operations["reanalyze_api_sessions__session_id__reanalyze_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{session_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Archive */
+        post: operations["archive_api_sessions__session_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sessions/{session_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore */
+        post: operations["restore_api_sessions__session_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/catalog/backup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Catalog Backup */
+        post: operations["catalog_backup_api_catalog_backup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/catalog/cleanup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Catalog Cleanup */
+        post: operations["catalog_cleanup_api_catalog_cleanup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/catalog/repair": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Catalog Repair */
+        post: operations["catalog_repair_api_catalog_repair_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -400,6 +520,28 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** ArtifactCleanupRequest */
+        ArtifactCleanupRequest: {
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+        };
+        /** ArtifactCleanupResponse */
+        ArtifactCleanupResponse: {
+            /** Dry Run */
+            dry_run: boolean;
+            /** Removed Paths */
+            removed_paths?: string[];
+            /** Skipped Paths */
+            skipped_paths?: string[];
+            /**
+             * Recovered Bytes
+             * @default 0
+             */
+            recovered_bytes: number;
+        };
         /** AxisTransform */
         AxisTransform: {
             /**
@@ -427,6 +569,26 @@ export interface components {
              */
             lateral_sign: -1 | 1;
         };
+        /** Bookmark */
+        Bookmark: {
+            /** Id */
+            id: string;
+            /** Seconds */
+            seconds: number;
+            /**
+             * Label
+             * @default
+             */
+            label: string;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+            /** Tags */
+            tags?: string[];
+            clip?: components["schemas"]["ClipRange"] | null;
+        };
         /** Calibration */
         Calibration: {
             transform?: components["schemas"]["AxisTransform"];
@@ -449,6 +611,35 @@ export interface components {
             diagnostics?: {
                 [key: string]: unknown;
             };
+        };
+        /** CatalogBackupResponse */
+        CatalogBackupResponse: {
+            /** Path */
+            path: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Size Bytes */
+            size_bytes: number;
+        };
+        /** CatalogRepairResponse */
+        CatalogRepairResponse: {
+            /** Restored From File */
+            restored_from_file?: string[];
+            /** Rewritten Files */
+            rewritten_files?: string[];
+            /** Sqlite Won */
+            sqlite_won?: string[];
+            /** File Won */
+            file_won?: string[];
+            /** Orphan Directories */
+            orphan_directories?: string[];
+            /** Missing Directories */
+            missing_directories?: string[];
+            /** Unreadable */
+            unreadable?: string[];
         };
         /** ChapterManifest */
         ChapterManifest: {
@@ -482,6 +673,13 @@ export interface components {
             /** Telemetry Packets */
             telemetry_packets?: number | null;
         };
+        /** ClipRange */
+        ClipRange: {
+            /** Start Seconds */
+            start_seconds: number;
+            /** End Seconds */
+            end_seconds: number;
+        };
         /** CoordinateOrigin */
         CoordinateOrigin: {
             /** Latitude */
@@ -496,6 +694,41 @@ export interface components {
              * @constant
              */
             convention: "WGS84 + right-handed ENU meters";
+        };
+        /** CornerComparison */
+        CornerComparison: {
+            /** Corner Id */
+            corner_id: string;
+            /** Name */
+            name: string;
+            /** Start Distance M */
+            start_distance_m: number;
+            /** Apex Distance M */
+            apex_distance_m: number;
+            /** End Distance M */
+            end_distance_m: number;
+            /** Time Impact S */
+            time_impact_s: number;
+            /** Reference Entry Speed Mps */
+            reference_entry_speed_mps?: number | null;
+            /** Comparison Entry Speed Mps */
+            comparison_entry_speed_mps?: number | null;
+            /** Reference Apex Speed Mps */
+            reference_apex_speed_mps?: number | null;
+            /** Comparison Apex Speed Mps */
+            comparison_apex_speed_mps?: number | null;
+            /** Reference Exit Speed Mps */
+            reference_exit_speed_mps?: number | null;
+            /** Comparison Exit Speed Mps */
+            comparison_exit_speed_mps?: number | null;
+            /** Reference Peak Lateral G */
+            reference_peak_lateral_g?: number | null;
+            /** Comparison Peak Lateral G */
+            comparison_peak_lateral_g?: number | null;
+            /** Reference Braking Distance M */
+            reference_braking_distance_m?: number | null;
+            /** Comparison Braking Distance M */
+            comparison_braking_distance_m?: number | null;
         };
         /** CornerEdit */
         CornerEdit: {
@@ -558,6 +791,22 @@ export interface components {
             peak_lateral_g?: number | null;
             /** Exit Acceleration Mps2 */
             exit_acceleration_mps2?: number | null;
+        };
+        /** DeltaRegion */
+        DeltaRegion: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "gain" | "loss";
+            /** Start Distance M */
+            start_distance_m: number;
+            /** End Distance M */
+            end_distance_m: number;
+            /** Delta Change S */
+            delta_change_s: number;
+            /** Peak Rate S Per M */
+            peak_rate_s_per_m?: number | null;
         };
         /** DisplayUnits */
         DisplayUnits: {
@@ -641,6 +890,37 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /** LapComparisonResponse */
+        LapComparisonResponse: {
+            /** Reference Lap */
+            reference_lap: number;
+            /** Comparison Lap */
+            comparison_lap: number;
+            /** Distance M */
+            distance_m: number[];
+            /** Reference Time S */
+            reference_time_s: number[];
+            /** Comparison Time S */
+            comparison_time_s: number[];
+            /** Delta S */
+            delta_s: number[];
+            /** Reference Speed Mps */
+            reference_speed_mps: number[];
+            /** Comparison Speed Mps */
+            comparison_speed_mps: number[];
+            /** Reference Lateral G */
+            reference_lateral_g?: (number | null)[];
+            /** Comparison Lateral G */
+            comparison_lateral_g?: (number | null)[];
+            /** Reference Longitudinal G */
+            reference_longitudinal_g?: (number | null)[];
+            /** Comparison Longitudinal G */
+            comparison_longitudinal_g?: (number | null)[];
+            /** Regions */
+            regions?: components["schemas"]["DeltaRegion"][];
+            /** Corners */
+            corners?: components["schemas"]["CornerComparison"][];
         };
         /** LapSummary */
         LapSummary: {
@@ -737,6 +1017,11 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** ReferenceLapPreference */
+        ReferenceLapPreference: {
+            /** Reference Lap */
+            reference_lap?: number | null;
+        };
         /** SessionManifest */
         SessionManifest: {
             /**
@@ -787,6 +1072,10 @@ export interface components {
             };
             /** Warnings */
             warnings?: string[];
+            /** Archived From Status */
+            archived_from_status?: string | null;
+            /** Archived At */
+            archived_at?: string | null;
         };
         /** SourceFingerprint */
         SourceFingerprint: {
@@ -907,6 +1196,10 @@ export interface components {
                 [key: string]: unknown;
             }[];
             display_units?: components["schemas"]["DisplayUnits"];
+            /** Reference Lap */
+            reference_lap?: number | null;
+            /** Bookmarks */
+            bookmarks?: components["schemas"]["Bookmark"][];
         };
         /** ValidationError */
         ValidationError: {
@@ -1060,6 +1353,37 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SessionManifest"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_session_api_sessions__session_id__delete: {
+        parameters: {
+            query: {
+                confirm: string;
+            };
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -1385,9 +1709,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: number[];
-                    };
+                    "application/json": components["schemas"]["LapComparisonResponse"];
                 };
             };
             /** @description Validation Error */
@@ -1537,6 +1859,76 @@ export interface operations {
             };
         };
     };
+    update_reference_lap_api_sessions__session_id__reference_lap_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReferenceLapPreference"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionManifest"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_bookmarks_api_sessions__session_id__bookmarks_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Bookmark"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionManifest"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     reanalyze_api_sessions__session_id__reanalyze_post: {
         parameters: {
             query?: never;
@@ -1564,6 +1956,141 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_api_sessions__session_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionManifest"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_api_sessions__session_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionManifest"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    catalog_backup_api_catalog_backup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogBackupResponse"];
+                };
+            };
+        };
+    };
+    catalog_cleanup_api_catalog_cleanup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ArtifactCleanupRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtifactCleanupResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    catalog_repair_api_catalog_repair_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogRepairResponse"];
                 };
             };
         };

@@ -169,6 +169,46 @@
             }
           }
         }
+      },
+      "delete": {
+        "summary": "Remove Session",
+        "operationId": "remove_session_api_sessions__session_id__delete",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "confirm",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Confirm"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/sessions/{session_id}/status": {
@@ -665,14 +705,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "additionalProperties": {
-                    "type": "array",
-                    "items": {
-                      "type": "number"
-                    }
-                  },
-                  "title": "Response Lap Comparison Api Sessions  Session Id  Comparison Get"
+                  "$ref": "#/components/schemas/LapComparisonResponse"
                 }
               }
             }
@@ -876,6 +909,108 @@
         }
       }
     },
+    "/api/sessions/{session_id}/reference-lap": {
+      "put": {
+        "summary": "Update Reference Lap",
+        "operationId": "update_reference_lap_api_sessions__session_id__reference_lap_put",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReferenceLapPreference"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionManifest"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}/bookmarks": {
+      "put": {
+        "summary": "Update Bookmarks",
+        "operationId": "update_bookmarks_api_sessions__session_id__bookmarks_put",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Bookmark"
+                },
+                "title": "Bookmarks"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionManifest"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/sessions/{session_id}/reanalyze": {
       "post": {
         "summary": "Reanalyze",
@@ -908,6 +1043,165 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}/archive": {
+      "post": {
+        "summary": "Archive",
+        "operationId": "archive_api_sessions__session_id__archive_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionManifest"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}/restore": {
+      "post": {
+        "summary": "Restore",
+        "operationId": "restore_api_sessions__session_id__restore_post",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionManifest"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/catalog/backup": {
+      "post": {
+        "summary": "Catalog Backup",
+        "operationId": "catalog_backup_api_catalog_backup_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogBackupResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/catalog/cleanup": {
+      "post": {
+        "summary": "Catalog Cleanup",
+        "operationId": "catalog_cleanup_api_catalog_cleanup_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ArtifactCleanupRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Payload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactCleanupResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/catalog/repair": {
+      "post": {
+        "summary": "Catalog Repair",
+        "operationId": "catalog_repair_api_catalog_repair_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogRepairResponse"
                 }
               }
             }
@@ -1076,6 +1370,49 @@
   },
   "components": {
     "schemas": {
+      "ArtifactCleanupRequest": {
+        "properties": {
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "ArtifactCleanupRequest"
+      },
+      "ArtifactCleanupResponse": {
+        "properties": {
+          "dry_run": {
+            "type": "boolean",
+            "title": "Dry Run"
+          },
+          "removed_paths": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Removed Paths"
+          },
+          "skipped_paths": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Skipped Paths"
+          },
+          "recovered_bytes": {
+            "type": "integer",
+            "title": "Recovered Bytes",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "dry_run"
+        ],
+        "title": "ArtifactCleanupResponse"
+      },
       "AxisTransform": {
         "properties": {
           "forward_axis": {
@@ -1120,6 +1457,53 @@
         "type": "object",
         "title": "AxisTransform"
       },
+      "Bookmark": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Id"
+          },
+          "seconds": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Seconds"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "default": ""
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "default": ""
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tags"
+          },
+          "clip": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClipRange"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "seconds"
+        ],
+        "title": "Bookmark"
+      },
       "Calibration": {
         "properties": {
           "transform": {
@@ -1148,6 +1532,85 @@
         },
         "type": "object",
         "title": "Calibration"
+      },
+      "CatalogBackupResponse": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "title": "Size Bytes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "created_at",
+          "size_bytes"
+        ],
+        "title": "CatalogBackupResponse"
+      },
+      "CatalogRepairResponse": {
+        "properties": {
+          "restored_from_file": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Restored From File"
+          },
+          "rewritten_files": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Rewritten Files"
+          },
+          "sqlite_won": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sqlite Won"
+          },
+          "file_won": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "File Won"
+          },
+          "orphan_directories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Orphan Directories"
+          },
+          "missing_directories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Directories"
+          },
+          "unreadable": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unreadable"
+          }
+        },
+        "type": "object",
+        "title": "CatalogRepairResponse"
       },
       "ChapterManifest": {
         "properties": {
@@ -1237,6 +1700,26 @@
         ],
         "title": "ChapterManifest"
       },
+      "ClipRange": {
+        "properties": {
+          "start_seconds": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Start Seconds"
+          },
+          "end_seconds": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "End Seconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "start_seconds",
+          "end_seconds"
+        ],
+        "title": "ClipRange"
+      },
       "CoordinateOrigin": {
         "properties": {
           "latitude": {
@@ -1265,6 +1748,154 @@
           "altitude_m"
         ],
         "title": "CoordinateOrigin"
+      },
+      "CornerComparison": {
+        "properties": {
+          "corner_id": {
+            "type": "string",
+            "title": "Corner Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "start_distance_m": {
+            "type": "number",
+            "title": "Start Distance M"
+          },
+          "apex_distance_m": {
+            "type": "number",
+            "title": "Apex Distance M"
+          },
+          "end_distance_m": {
+            "type": "number",
+            "title": "End Distance M"
+          },
+          "time_impact_s": {
+            "type": "number",
+            "title": "Time Impact S"
+          },
+          "reference_entry_speed_mps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Entry Speed Mps"
+          },
+          "comparison_entry_speed_mps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comparison Entry Speed Mps"
+          },
+          "reference_apex_speed_mps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Apex Speed Mps"
+          },
+          "comparison_apex_speed_mps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comparison Apex Speed Mps"
+          },
+          "reference_exit_speed_mps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Exit Speed Mps"
+          },
+          "comparison_exit_speed_mps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comparison Exit Speed Mps"
+          },
+          "reference_peak_lateral_g": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Peak Lateral G"
+          },
+          "comparison_peak_lateral_g": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comparison Peak Lateral G"
+          },
+          "reference_braking_distance_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Braking Distance M"
+          },
+          "comparison_braking_distance_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comparison Braking Distance M"
+          }
+        },
+        "type": "object",
+        "required": [
+          "corner_id",
+          "name",
+          "start_distance_m",
+          "apex_distance_m",
+          "end_distance_m",
+          "time_impact_s"
+        ],
+        "title": "CornerComparison"
       },
       "CornerEdit": {
         "properties": {
@@ -1533,6 +2164,49 @@
         ],
         "title": "CornerSummary"
       },
+      "DeltaRegion": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "gain",
+              "loss"
+            ],
+            "title": "Kind"
+          },
+          "start_distance_m": {
+            "type": "number",
+            "title": "Start Distance M"
+          },
+          "end_distance_m": {
+            "type": "number",
+            "title": "End Distance M"
+          },
+          "delta_change_s": {
+            "type": "number",
+            "title": "Delta Change S"
+          },
+          "peak_rate_s_per_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Peak Rate S Per M"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "start_distance_m",
+          "end_distance_m",
+          "delta_change_s"
+        ],
+        "title": "DeltaRegion"
+      },
       "DisplayUnits": {
         "properties": {
           "speed": {
@@ -1711,6 +2385,142 @@
           "updated_at"
         ],
         "title": "JobStatus"
+      },
+      "LapComparisonResponse": {
+        "properties": {
+          "reference_lap": {
+            "type": "integer",
+            "title": "Reference Lap"
+          },
+          "comparison_lap": {
+            "type": "integer",
+            "title": "Comparison Lap"
+          },
+          "distance_m": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Distance M"
+          },
+          "reference_time_s": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Reference Time S"
+          },
+          "comparison_time_s": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Comparison Time S"
+          },
+          "delta_s": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Delta S"
+          },
+          "reference_speed_mps": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Reference Speed Mps"
+          },
+          "comparison_speed_mps": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Comparison Speed Mps"
+          },
+          "reference_lateral_g": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Reference Lateral G"
+          },
+          "comparison_lateral_g": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Comparison Lateral G"
+          },
+          "reference_longitudinal_g": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Reference Longitudinal G"
+          },
+          "comparison_longitudinal_g": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Comparison Longitudinal G"
+          },
+          "regions": {
+            "items": {
+              "$ref": "#/components/schemas/DeltaRegion"
+            },
+            "type": "array",
+            "title": "Regions"
+          },
+          "corners": {
+            "items": {
+              "$ref": "#/components/schemas/CornerComparison"
+            },
+            "type": "array",
+            "title": "Corners"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reference_lap",
+          "comparison_lap",
+          "distance_m",
+          "reference_time_s",
+          "comparison_time_s",
+          "delta_s",
+          "reference_speed_mps",
+          "comparison_speed_mps"
+        ],
+        "title": "LapComparisonResponse"
       },
       "LapSummary": {
         "properties": {
@@ -2010,6 +2820,24 @@
         ],
         "title": "ProcessingStage"
       },
+      "ReferenceLapPreference": {
+        "properties": {
+          "reference_lap": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Lap"
+          }
+        },
+        "type": "object",
+        "title": "ReferenceLapPreference"
+      },
       "SessionManifest": {
         "properties": {
           "schema_version": {
@@ -2108,6 +2936,29 @@
             },
             "type": "array",
             "title": "Warnings"
+          },
+          "archived_from_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived From Status"
+          },
+          "archived_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Archived At"
           }
         },
         "additionalProperties": false,
@@ -2406,6 +3257,25 @@
           },
           "display_units": {
             "$ref": "#/components/schemas/DisplayUnits"
+          },
+          "reference_lap": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Lap"
+          },
+          "bookmarks": {
+            "items": {
+              "$ref": "#/components/schemas/Bookmark"
+            },
+            "type": "array",
+            "title": "Bookmarks"
           }
         },
         "type": "object",

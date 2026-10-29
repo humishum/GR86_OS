@@ -1,0 +1,109 @@
+name: Race Review
+
+on:
+  push:
+    paths:
+      - "race_review/**"
+      - ".github/workflows/race-review.yml"
+  pull_request:
+    paths:
+      - "race_review/**"
+      - ".github/workflows/race-review.yml"
+
+concurrency:
+  group: race-review-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    env:
+      CI: true
+      RACE_REVIEW_PROXY_ACCELERATION: cpu
+    steps:
+      - name: Check out Race Review
+        uses: actions/checkout@v4
+        with:
+          path: GR86_OS
+
+      - name: Check out pinned gopropy
+        uses: actions/checkout@v4
+        with:
+          repository: humishum/gopropy
+          ref: 082d65bfb2e0629c3dc46c5f83d6208e661a8ca7
+          path: gopro-py
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: GR86_OS/race_review/uv.lock
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: GR86_OS/race_review/frontend/package-lock.json
+
+      - name: Install FFmpeg (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Install FFmpeg (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
+
+      - name: Install Python dependencies
+        working-directory: GR86_OS/race_review
+        run: uv sync --extra dev
+
+      - name: Ruff
+        working-directory: GR86_OS/race_review
+        run: uv run ruff check src tests scripts
+
+      - name: Pytest
+        working-directory: GR86_OS/race_review
+        run: uv run pytest
+
+      - name: Install frontend dependencies
+        working-directory: GR86_OS/race_review/frontend
+        run: npm ci
+
+      - name: Vitest
+        working-directory: GR86_OS/race_review/frontend
+        run: npm test
+
+      - name: TypeScript production build
+        working-directory: GR86_OS/race_review/frontend
+        run: npm run build
+
+      - name: Install Playwright Chromium
+        working-directory: GR86_OS/race_review/frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Playwright
+        working-directory: GR86_OS/race_review/frontend
+        run: npm run test:e2e
+
+      - name: Upload Playwright artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-${{ matrix.os }}
+          path: GR86_OS/race_review/frontend/test-results
+          if-no-files-found: ignore

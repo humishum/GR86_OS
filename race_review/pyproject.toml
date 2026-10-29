@@ -22,6 +22,7 @@ dev = [
   "httpx>=0.28,<1",
   "pytest>=9,<10",
   "pytest-cov>=6,<8",
+  "ruff>=0.14,<1",
 ]
 
 [project.scripts]
@@ -48,6 +49,11 @@ gopropy-revision = "082d65bfb2e0629c3dc46c5f83d6208e661a8ca7"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = [
+  "ffmpeg: requires ffmpeg and ffprobe for portable H.264 fixtures",
+  "nvidia: opt-in NVIDIA CUDA/NVENC validation; set RACE_REVIEW_NVIDIA=1",
+  "gopro_sample: opt-in full GoPro chapter assertions; set RACE_REVIEW_GOPRO_SAMPLE",
+]
 
 [tool.ruff]
 target-version = "py312"

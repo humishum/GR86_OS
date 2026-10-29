@@ -1,4 +1,4 @@
-import type { ChapterManifest, CornerSummary, LapSummary } from "../types";
+import type { Bookmark, ChapterManifest, CornerSummary, LapSummary } from "../types";
 import { formatTime, telemetryNumber, type TelemetrySample } from "../telemetry";
 
 type Props = {
@@ -8,6 +8,7 @@ type Props = {
   laps: LapSummary[];
   corners: CornerSummary[];
   samples: TelemetrySample[];
+  bookmarks?: Bookmark[];
   onSeek: (seconds: number) => void;
 };
 
@@ -25,7 +26,7 @@ function crossingTime(samples: TelemetrySample[], distance: number) {
   return null;
 }
 
-export function Scrubber({ time, duration, chapters, laps, corners, samples, onSeek }: Props) {
+export function Scrubber({ time, duration, chapters, laps, corners, samples, bookmarks = [], onSeek }: Props) {
   const percent = duration ? (time / duration) * 100 : 0;
   const lapLength = Math.max(...corners.map((corner) => corner.end_distance_m), 1);
   const cornerMarkers = laps
@@ -62,6 +63,25 @@ export function Scrubber({ time, duration, chapters, laps, corners, samples, onS
         {laps.map((lap) => (
           <i key={lap.lap_number} className="marker marker--lap" style={{ left: `${(lap.start_seconds / duration) * 100}%` }} title={`Lap ${lap.lap_number}`} />
         ))}
+        {bookmarks.map((bookmark) => (
+          <i
+            key={bookmark.id}
+            className="marker marker--bookmark"
+            style={{ left: `${(bookmark.seconds / duration) * 100}%` }}
+            title={bookmark.label || `Bookmark ${formatTime(bookmark.seconds)}`}
+          />
+        ))}
+        {bookmarks.flatMap((bookmark) => bookmark.clip ? (
+          <i
+            key={`${bookmark.id}-clip`}
+            className="marker marker--clip"
+            style={{
+              left: `${(bookmark.clip.start_seconds / duration) * 100}%`,
+              width: `${Math.max(0.4, ((bookmark.clip.end_seconds - bookmark.clip.start_seconds) / duration) * 100)}%`,
+            }}
+            title={`${bookmark.label || "Clip"} ${formatTime(bookmark.clip.start_seconds)}–${formatTime(bookmark.clip.end_seconds)}`}
+          />
+        ) : [])}
         {cornerMarkers.map(({ corner, lap, time: cornerTime }) => (
           <i
             key={`${lap.lap_number}-${corner.corner_id}`}

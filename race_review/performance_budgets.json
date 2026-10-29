@@ -1,0 +1,6 @@
+{
+  "cpu_proxy_short_fixture_s": 30,
+  "telemetry_request_ms": 500,
+  "paused_seek_surface_update_ms": 750,
+  "map_position_update_ms": 500
+}

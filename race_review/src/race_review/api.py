@@ -13,14 +13,27 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 
-from .analysis import compare_laps
+from .analysis import compare_corners, compare_laps, summarize_delta_regions
 from .catalog import Catalog
 from .config import Settings
 from .export import build_analysis_bundle
 from .ingest import ImportService
+from .maintenance import (
+    archive_session,
+    backup_catalog,
+    cleanup_artifacts,
+    delete_session,
+    repair_catalog,
+    restore_session,
+)
 from .media import list_media, source_is_current
 from .models import (
+    ArtifactCleanupRequest,
+    ArtifactCleanupResponse,
+    Bookmark,
     Calibration,
+    CatalogBackupResponse,
+    CatalogRepairResponse,
     CornerEdit,
     CornerSummary,
     DisplayUnits,
@@ -28,8 +41,10 @@ from .models import (
     ImportRequest,
     ImportResponse,
     JobStatus,
+    LapComparisonResponse,
     LapSummary,
     MediaEntry,
+    ReferenceLapPreference,
     SessionManifest,
     SourceRelocationRequest,
     TelemetryWindow,
@@ -132,6 +147,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
+        repair_catalog(catalog, settings)
         for manifest in catalog.list_manifests():
             if manifest.status in {"queued", "processing"}:
                 importer.submit(
@@ -166,6 +182,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return catalog.get_manifest(session_id)
         except KeyError as exc:
             raise HTTPException(404, "Session not found") from exc
+
+    def persist(manifest: SessionManifest) -> None:
+        catalog.persist_manifest(manifest, settings.session_dir(manifest.session_id))
+
+    def require_active(manifest: SessionManifest) -> SessionManifest:
+        if manifest.status == "archived":
+            raise HTTPException(409, "Restore the session before editing")
+        return manifest
 
     @app.get("/api/health")
     async def health() -> dict[str, str]:
@@ -204,10 +228,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return catalog.get_job(session_id)
 
     @app.post("/api/sessions/{session_id}/relocate-source", response_model=SessionManifest)
-    async def relocate_source(
-        session_id: str, payload: SourceRelocationRequest
-    ) -> SessionManifest:
-        manifest_or_404(session_id)
+    async def relocate_source(session_id: str, payload: SourceRelocationRequest) -> SessionManifest:
+        require_active(manifest_or_404(session_id))
         try:
             return importer.relocate_source(session_id, payload.chapter_index, payload.path)
         except ValueError as exc:
@@ -215,7 +237,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/api/sessions/{session_id}/retry", response_model=ImportResponse, status_code=202)
     async def retry_import(session_id: str) -> ImportResponse:
-        manifest_or_404(session_id)
+        require_active(manifest_or_404(session_id))
         try:
             manifest = importer.retry(session_id)
         except ValueError as exc:
@@ -224,7 +246,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/api/sessions/{session_id}/cancel", response_model=ImportResponse, status_code=202)
     async def cancel_import(session_id: str) -> ImportResponse:
-        manifest_or_404(session_id)
+        require_active(manifest_or_404(session_id))
         try:
             manifest = importer.cancel(session_id)
         except ValueError as exc:
@@ -237,7 +259,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         status_code=202,
     )
     async def rebuild_proxy(session_id: str) -> ImportResponse:
-        manifest_or_404(session_id)
+        require_active(manifest_or_404(session_id))
         try:
             manifest = importer.rebuild_proxy(session_id)
         except ValueError as exc:
@@ -302,13 +324,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         values = _json_file(_session_file(settings, session_id, "analysis/corners.json"))
         return [CornerSummary.model_validate(value) for value in values]
 
-    @app.get("/api/sessions/{session_id}/comparison")
+    @app.get("/api/sessions/{session_id}/comparison", response_model=LapComparisonResponse)
     async def lap_comparison(
         session_id: str,
         reference_lap: Annotated[int, Query(ge=1)],
         comparison_lap: Annotated[int, Query(ge=1)],
         points: Annotated[int, Query(ge=50, le=2_000)] = 500,
-    ) -> dict[str, list[float]]:
+    ) -> LapComparisonResponse:
         manifest = manifest_or_404(session_id)
         frame = pd.read_parquet(
             _session_file(settings, session_id, manifest.artifacts["derived_telemetry"])
@@ -317,14 +339,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             value = compare_laps(frame, reference_lap, comparison_lap, points)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
-        return {
-            "distance_m": value.distance_m.tolist(),
-            "reference_time_s": value.reference_time_s.tolist(),
-            "comparison_time_s": value.comparison_time_s.tolist(),
-            "delta_s": value.delta_s.tolist(),
-            "reference_speed_mps": value.reference_speed_mps.tolist(),
-            "comparison_speed_mps": value.comparison_speed_mps.tolist(),
-        }
+        corners = [
+            CornerSummary.model_validate(item)
+            for item in _json_file(_session_file(settings, session_id, "analysis/corners.json"))
+        ]
+        return LapComparisonResponse(
+            reference_lap=reference_lap,
+            comparison_lap=comparison_lap,
+            distance_m=value.distance_m.tolist(),
+            reference_time_s=value.reference_time_s.tolist(),
+            comparison_time_s=value.comparison_time_s.tolist(),
+            delta_s=value.delta_s.tolist(),
+            reference_speed_mps=value.reference_speed_mps.tolist(),
+            comparison_speed_mps=value.comparison_speed_mps.tolist(),
+            reference_lateral_g=[_finite_json(item) for item in value.reference_lateral_g],
+            comparison_lateral_g=[_finite_json(item) for item in value.comparison_lateral_g],
+            reference_longitudinal_g=[
+                _finite_json(item) for item in value.reference_longitudinal_g
+            ],
+            comparison_longitudinal_g=[
+                _finite_json(item) for item in value.comparison_longitudinal_g
+            ],
+            regions=summarize_delta_regions(value.distance_m, value.delta_s),
+            corners=compare_corners(value, corners),
+        )
 
     @app.get("/api/sessions/{session_id}/track-geometry", response_model=TrackGeometryAdapter)
     async def track_geometry(session_id: str) -> TrackGeometryAdapter:
@@ -363,49 +401,117 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.put("/api/sessions/{session_id}/track", response_model=SessionManifest)
     async def update_track(session_id: str, track: TrackConfig) -> SessionManifest:
-        manifest = manifest_or_404(session_id)
+        manifest = require_active(manifest_or_404(session_id))
         manifest.edits.track = track
         catalog.save_edit(session_id, "track", track.model_dump(mode="json"))
-        catalog.save_manifest(manifest)
+        persist(manifest)
         return importer.reanalyze(session_id)
 
     @app.put("/api/sessions/{session_id}/calibration", response_model=SessionManifest)
     async def update_calibration(session_id: str, calibration: Calibration) -> SessionManifest:
-        manifest = manifest_or_404(session_id)
+        manifest = require_active(manifest_or_404(session_id))
         calibration.overridden = True
         manifest.edits.calibration = calibration
         catalog.save_edit(session_id, "calibration", calibration.model_dump(mode="json"))
-        catalog.save_manifest(manifest)
-        importer._save(manifest)
+        persist(manifest)
         return manifest
 
     @app.put("/api/sessions/{session_id}/display-units", response_model=SessionManifest)
-    async def update_display_units(
-        session_id: str, display_units: DisplayUnits
-    ) -> SessionManifest:
-        manifest = manifest_or_404(session_id)
+    async def update_display_units(session_id: str, display_units: DisplayUnits) -> SessionManifest:
+        manifest = require_active(manifest_or_404(session_id))
         manifest.edits.display_units = display_units
+        catalog.save_edit(session_id, "display_units", display_units.model_dump(mode="json"))
+        persist(manifest)
+        return manifest
+
+    @app.put("/api/sessions/{session_id}/reference-lap", response_model=SessionManifest)
+    async def update_reference_lap(
+        session_id: str, preference: ReferenceLapPreference
+    ) -> SessionManifest:
+        manifest = require_active(manifest_or_404(session_id))
+        manifest.edits.reference_lap = preference.reference_lap
+        catalog.save_edit(session_id, "reference_lap", preference.model_dump(mode="json"))
+        persist(manifest)
+        return manifest
+
+    @app.put("/api/sessions/{session_id}/bookmarks", response_model=SessionManifest)
+    async def update_bookmarks(session_id: str, bookmarks: list[Bookmark]) -> SessionManifest:
+        manifest = require_active(manifest_or_404(session_id))
+        identifiers = [bookmark.id for bookmark in bookmarks]
+        if len(identifiers) != len(set(identifiers)):
+            raise HTTPException(422, "Bookmark ids must be unique")
+        manifest.edits.bookmarks = bookmarks
         catalog.save_edit(
-            session_id, "display_units", display_units.model_dump(mode="json")
+            session_id, "bookmarks", [bookmark.model_dump(mode="json") for bookmark in bookmarks]
         )
-        catalog.save_manifest(manifest)
-        importer._save(manifest)
+        persist(manifest)
         return manifest
 
     @app.put("/api/sessions/{session_id}/corners", response_model=list[CornerSummary])
     async def update_corners(session_id: str, edits: list[CornerEdit]) -> list[CornerSummary]:
-        manifest = manifest_or_404(session_id)
+        manifest = require_active(manifest_or_404(session_id))
         edit_values = [edit.model_dump(exclude_none=True, mode="json") for edit in edits]
         manifest.edits.corner_edits = [*manifest.edits.corner_edits, *edit_values]
         catalog.save_edit(session_id, "corners", manifest.edits.corner_edits)
-        catalog.save_manifest(manifest)
+        persist(manifest)
         importer.reanalyze(session_id)
         return await corners(session_id)
 
     @app.post("/api/sessions/{session_id}/reanalyze", response_model=SessionManifest)
     async def reanalyze(session_id: str) -> SessionManifest:
-        manifest_or_404(session_id)
+        require_active(manifest_or_404(session_id))
         return importer.reanalyze(session_id)
+
+    @app.post("/api/sessions/{session_id}/archive", response_model=SessionManifest)
+    async def archive(session_id: str) -> SessionManifest:
+        manifest_or_404(session_id)
+        if importer.is_running(session_id):
+            raise HTTPException(409, "Cannot archive a session while import is running")
+        try:
+            return archive_session(catalog, settings, session_id)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.post("/api/sessions/{session_id}/restore", response_model=SessionManifest)
+    async def restore(session_id: str) -> SessionManifest:
+        manifest_or_404(session_id)
+        try:
+            return restore_session(catalog, settings, session_id)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.delete("/api/sessions/{session_id}", status_code=204)
+    async def remove_session(
+        session_id: str, confirm: Annotated[str, Query(min_length=1)]
+    ) -> Response:
+        manifest_or_404(session_id)
+        try:
+            delete_session(
+                catalog,
+                settings,
+                session_id,
+                confirm_session_id=confirm,
+                running={session_id} if importer.is_running(session_id) else None,
+            )
+        except ValueError as exc:
+            status = 422 if "confirm_session_id" in str(exc) else 409
+            raise HTTPException(status, str(exc)) from exc
+        return Response(status_code=204)
+
+    @app.post("/api/catalog/backup", response_model=CatalogBackupResponse)
+    async def catalog_backup() -> CatalogBackupResponse:
+        return backup_catalog(catalog, settings)
+
+    @app.post("/api/catalog/cleanup", response_model=ArtifactCleanupResponse)
+    async def catalog_cleanup(
+        payload: ArtifactCleanupRequest | None = None,
+    ) -> ArtifactCleanupResponse:
+        request = payload or ArtifactCleanupRequest()
+        return cleanup_artifacts(catalog, settings, dry_run=request.dry_run)
+
+    @app.post("/api/catalog/repair", response_model=CatalogRepairResponse)
+    async def catalog_repair() -> CatalogRepairResponse:
+        return repair_catalog(catalog, settings)
 
     @app.get("/api/sessions/{session_id}/media/proxy")
     async def proxy_media(session_id: str, request: Request) -> StreamingResponse:
@@ -454,6 +560,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             manifest,
             settings.session_dir(session_id),
             include_clip_references=include_clip_references,
+            settings=settings,
         )
         return _range_response(
             bundle,
