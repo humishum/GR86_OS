@@ -1,0 +1,591 @@
+from __future__ import annotations
+
+import json
+import mimetypes
+import re
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Annotated, Any
+
+import numpy as np
+import pandas as pd
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response, StreamingResponse
+
+from .analysis import compare_corners, compare_laps, summarize_delta_regions
+from .catalog import Catalog
+from .config import Settings
+from .export import build_analysis_bundle
+from .ingest import ImportService
+from .maintenance import (
+    archive_session,
+    backup_catalog,
+    cleanup_artifacts,
+    delete_session,
+    repair_catalog,
+    restore_session,
+)
+from .media import list_media, source_is_current
+from .models import (
+    ArtifactCleanupRequest,
+    ArtifactCleanupResponse,
+    Bookmark,
+    Calibration,
+    CatalogBackupResponse,
+    CatalogRepairResponse,
+    CornerEdit,
+    CornerSummary,
+    DisplayUnits,
+    ENUPoint,
+    ImportRequest,
+    ImportResponse,
+    JobStatus,
+    LapComparisonResponse,
+    LapSummary,
+    MediaEntry,
+    ReferenceLapPreference,
+    SessionManifest,
+    SourceRelocationRequest,
+    TelemetryWindow,
+    TrackConfig,
+    TrackGeometryAdapter,
+    WGS84Point,
+)
+
+
+def _session_file(settings: Settings, session_id: str, relative: str) -> Path:
+    session_dir = settings.session_dir(session_id).resolve()
+    path = (session_dir / relative).resolve()
+    if not path.is_relative_to(session_dir):
+        raise HTTPException(400, "Invalid artifact path")
+    return path
+
+
+def _json_file(path: Path) -> Any:
+    if not path.is_file():
+        return []
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _finite_json(value: object) -> float | int | bool | None:
+    if value is None or value is pd.NA:
+        return None
+    if isinstance(value, (bool, np.bool_)):
+        return bool(value)
+    if isinstance(value, (int, np.integer)):
+        return int(value)
+    try:
+        number = float(value)
+        return number if np.isfinite(number) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _downsample(frame: pd.DataFrame, maximum: int) -> pd.DataFrame:
+    if len(frame) <= maximum:
+        return frame
+    # Deterministic evenly-spaced samples preserve endpoints and video interpolation behavior.
+    indices = np.linspace(0, len(frame) - 1, maximum, dtype=int)
+    return frame.iloc[np.unique(indices)]
+
+
+def _range_response(
+    path: Path, request: Request, media_type: str, *, filename: str | None = None
+) -> StreamingResponse:
+    size = path.stat().st_size
+    start, end, status = 0, max(0, size - 1), 200
+    requested = request.headers.get("range")
+    if requested:
+        match = re.fullmatch(r"bytes=(\d*)-(\d*)", requested.strip())
+        if not match or (not match.group(1) and not match.group(2)):
+            raise HTTPException(
+                416, "Invalid byte range", headers={"Content-Range": f"bytes */{size}"}
+            )
+        if match.group(1):
+            start = int(match.group(1))
+            end = min(int(match.group(2)), size - 1) if match.group(2) else size - 1
+        else:
+            suffix = int(match.group(2))
+            start, end = max(0, size - suffix), size - 1
+        if start >= size or end < start:
+            raise HTTPException(
+                416,
+                "Byte range is outside the artifact",
+                headers={"Content-Range": f"bytes */{size}"},
+            )
+        status = 206
+
+    async def chunks():
+        remaining = end - start + 1
+        with path.open("rb") as source:
+            source.seek(start)
+            while remaining:
+                block = source.read(min(1024 * 1024, remaining))
+                if not block:
+                    break
+                remaining -= len(block)
+                yield block
+
+    headers = {
+        "Accept-Ranges": "bytes",
+        "Content-Length": str(end - start + 1),
+        "ETag": f'"{size:x}-{path.stat().st_mtime_ns:x}"',
+    }
+    if status == 206:
+        headers["Content-Range"] = f"bytes {start}-{end}/{size}"
+    if filename:
+        headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return StreamingResponse(chunks(), status_code=status, media_type=media_type, headers=headers)
+
+
+def create_app(settings: Settings | None = None) -> FastAPI:
+    settings = settings or Settings.from_env()
+    settings.ensure_directories()
+    catalog = Catalog(settings.database_path)
+    importer = ImportService(settings, catalog)
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        repair_catalog(catalog, settings)
+        for manifest in catalog.list_manifests():
+            if manifest.status in {"queued", "processing"}:
+                importer.submit(
+                    manifest,
+                    ImportRequest(
+                        chapters=[chapter.fingerprint.path for chapter in manifest.chapters],
+                        name=manifest.name,
+                        generate_proxy=manifest.processing_options.get("generate_proxy", True),
+                    ),
+                )
+        yield
+
+    app = FastAPI(
+        title="GR86 Race Review API",
+        version="0.1.0",
+        description="Local-first GoPro race review using canonical video-relative seconds.",
+        lifespan=lifespan,
+    )
+    app.state.settings = settings
+    app.state.catalog = catalog
+    app.state.importer = importer
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    def manifest_or_404(session_id: str) -> SessionManifest:
+        try:
+            return catalog.get_manifest(session_id)
+        except KeyError as exc:
+            raise HTTPException(404, "Session not found") from exc
+
+    def persist(manifest: SessionManifest) -> None:
+        catalog.persist_manifest(manifest, settings.session_dir(manifest.session_id))
+
+    def require_active(manifest: SessionManifest) -> SessionManifest:
+        if manifest.status == "archived":
+            raise HTTPException(409, "Restore the session before editing")
+        return manifest
+
+    @app.get("/api/health")
+    async def health() -> dict[str, str]:
+        return {"status": "ok"}
+
+    @app.get("/api/media", response_model=list[MediaEntry])
+    async def browse_media(path: str = "") -> list[MediaEntry]:
+        return list_media(settings, path)
+
+    @app.get("/api/sessions", response_model=list[SessionManifest])
+    async def sessions() -> list[SessionManifest]:
+        return catalog.list_manifests()
+
+    @app.post("/api/sessions/import", response_model=ImportResponse, status_code=202)
+    async def import_session(payload: ImportRequest) -> ImportResponse:
+        try:
+            manifest = importer.prepare(payload)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        importer.submit(manifest, payload)
+        return ImportResponse(session_id=manifest.session_id, status=manifest.status)
+
+    @app.get("/api/sessions/{session_id}", response_model=SessionManifest)
+    async def session(session_id: str) -> SessionManifest:
+        manifest = manifest_or_404(session_id)
+        for chapter in manifest.chapters:
+            if not source_is_current(chapter.fingerprint):
+                warning = f"Source is missing or stale: {chapter.fingerprint.path}"
+                if warning not in manifest.warnings:
+                    manifest.warnings.append(warning)
+        return manifest
+
+    @app.get("/api/sessions/{session_id}/status", response_model=JobStatus)
+    async def import_status(session_id: str) -> JobStatus:
+        manifest_or_404(session_id)
+        return catalog.get_job(session_id)
+
+    @app.post("/api/sessions/{session_id}/relocate-source", response_model=SessionManifest)
+    async def relocate_source(session_id: str, payload: SourceRelocationRequest) -> SessionManifest:
+        require_active(manifest_or_404(session_id))
+        try:
+            return importer.relocate_source(session_id, payload.chapter_index, payload.path)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @app.post("/api/sessions/{session_id}/retry", response_model=ImportResponse, status_code=202)
+    async def retry_import(session_id: str) -> ImportResponse:
+        require_active(manifest_or_404(session_id))
+        try:
+            manifest = importer.retry(session_id)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return ImportResponse(session_id=session_id, status=manifest.status)
+
+    @app.post("/api/sessions/{session_id}/cancel", response_model=ImportResponse, status_code=202)
+    async def cancel_import(session_id: str) -> ImportResponse:
+        require_active(manifest_or_404(session_id))
+        try:
+            manifest = importer.cancel(session_id)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return ImportResponse(session_id=session_id, status=manifest.status)
+
+    @app.post(
+        "/api/sessions/{session_id}/media/proxy/rebuild",
+        response_model=ImportResponse,
+        status_code=202,
+    )
+    async def rebuild_proxy(session_id: str) -> ImportResponse:
+        require_active(manifest_or_404(session_id))
+        try:
+            manifest = importer.rebuild_proxy(session_id)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return ImportResponse(session_id=session_id, status=manifest.status)
+
+    @app.get("/api/sessions/{session_id}/telemetry", response_model=TelemetryWindow)
+    async def telemetry(
+        session_id: str,
+        start: Annotated[float, Query(ge=0)] = 0,
+        end: float | None = Query(default=None, gt=0),
+        fields: str | None = None,
+        max_points: Annotated[int, Query(ge=2, le=100_000)] = 8_000,
+    ) -> TelemetryWindow:
+        manifest = manifest_or_404(session_id)
+        path = _session_file(settings, session_id, manifest.artifacts.get("derived_telemetry", ""))
+        if not path.is_file():
+            raise HTTPException(409, "Derived telemetry is not ready")
+        frame = pd.read_parquet(path)
+        end_time = manifest.duration_seconds if end is None else min(end, manifest.duration_seconds)
+        if end_time < start:
+            raise HTTPException(422, "end must be after start")
+        frame = frame[(frame["timestamp"] >= start) & (frame["timestamp"] <= end_time)]
+        default_fields = [
+            "timestamp",
+            "latitude",
+            "longitude",
+            "altitude_m",
+            "east_smooth_m",
+            "north_smooth_m",
+            "up_smooth_m",
+            "speed_mps",
+            "longitudinal_g",
+            "lateral_g",
+            "distance_m",
+            "lap_number",
+            "lap_distance_m",
+            "valid",
+        ]
+        requested = [item.strip() for item in fields.split(",")] if fields else default_fields
+        columns = [name for name in requested if name in frame.columns]
+        if "timestamp" not in columns:
+            columns.insert(0, "timestamp")
+        frame = _downsample(frame[columns], max_points)
+        rows = [
+            [_finite_json(value) for value in row]
+            for row in frame.itertuples(index=False, name=None)
+        ]
+        return TelemetryWindow(
+            columns=columns, rows=rows, start_seconds=start, end_seconds=end_time
+        )
+
+    @app.get("/api/sessions/{session_id}/laps", response_model=list[LapSummary])
+    async def laps(session_id: str) -> list[LapSummary]:
+        manifest_or_404(session_id)
+        values = _json_file(_session_file(settings, session_id, "analysis/laps.json"))
+        return [LapSummary.model_validate(value) for value in values]
+
+    @app.get("/api/sessions/{session_id}/corners", response_model=list[CornerSummary])
+    async def corners(session_id: str) -> list[CornerSummary]:
+        manifest_or_404(session_id)
+        values = _json_file(_session_file(settings, session_id, "analysis/corners.json"))
+        return [CornerSummary.model_validate(value) for value in values]
+
+    @app.get("/api/sessions/{session_id}/comparison", response_model=LapComparisonResponse)
+    async def lap_comparison(
+        session_id: str,
+        reference_lap: Annotated[int, Query(ge=1)],
+        comparison_lap: Annotated[int, Query(ge=1)],
+        points: Annotated[int, Query(ge=50, le=2_000)] = 500,
+    ) -> LapComparisonResponse:
+        manifest = manifest_or_404(session_id)
+        frame = pd.read_parquet(
+            _session_file(settings, session_id, manifest.artifacts["derived_telemetry"])
+        )
+        try:
+            value = compare_laps(frame, reference_lap, comparison_lap, points)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        corners = [
+            CornerSummary.model_validate(item)
+            for item in _json_file(_session_file(settings, session_id, "analysis/corners.json"))
+        ]
+        return LapComparisonResponse(
+            reference_lap=reference_lap,
+            comparison_lap=comparison_lap,
+            distance_m=value.distance_m.tolist(),
+            reference_time_s=value.reference_time_s.tolist(),
+            comparison_time_s=value.comparison_time_s.tolist(),
+            delta_s=value.delta_s.tolist(),
+            reference_speed_mps=value.reference_speed_mps.tolist(),
+            comparison_speed_mps=value.comparison_speed_mps.tolist(),
+            reference_lateral_g=[_finite_json(item) for item in value.reference_lateral_g],
+            comparison_lateral_g=[_finite_json(item) for item in value.comparison_lateral_g],
+            reference_longitudinal_g=[
+                _finite_json(item) for item in value.reference_longitudinal_g
+            ],
+            comparison_longitudinal_g=[
+                _finite_json(item) for item in value.comparison_longitudinal_g
+            ],
+            regions=summarize_delta_regions(value.distance_m, value.delta_s),
+            corners=compare_corners(value, corners),
+        )
+
+    @app.get("/api/sessions/{session_id}/track-geometry", response_model=TrackGeometryAdapter)
+    async def track_geometry(session_id: str) -> TrackGeometryAdapter:
+        manifest = manifest_or_404(session_id)
+        if manifest.coordinate_origin is None:
+            raise HTTPException(409, "Track geometry is not ready")
+        frame = pd.read_parquet(
+            _session_file(settings, session_id, manifest.artifacts["derived_telemetry"])
+        )
+        frame = _downsample(frame[frame["valid"]], 5_000)
+        return TrackGeometryAdapter(
+            origin=manifest.coordinate_origin,
+            route_wgs84=[
+                WGS84Point(
+                    latitude=float(row.latitude),
+                    longitude=float(row.longitude),
+                    altitude_m=(
+                        float(row.altitude_m)
+                        if np.isfinite(float(getattr(row, "altitude_m", np.nan)))
+                        else None
+                    ),
+                )
+                for row in frame.itertuples()
+            ],
+            route_enu_m=[
+                ENUPoint(
+                    east_m=float(row.east_smooth_m),
+                    north_m=float(row.north_smooth_m),
+                    up_m=(
+                        float(row.up_m) if np.isfinite(float(getattr(row, "up_m", np.nan))) else 0.0
+                    ),
+                )
+                for row in frame.itertuples()
+            ],
+        )
+
+    @app.put("/api/sessions/{session_id}/track", response_model=SessionManifest)
+    async def update_track(session_id: str, track: TrackConfig) -> SessionManifest:
+        manifest = require_active(manifest_or_404(session_id))
+        manifest.edits.track = track
+        catalog.save_edit(session_id, "track", track.model_dump(mode="json"))
+        persist(manifest)
+        return importer.reanalyze(session_id)
+
+    @app.put("/api/sessions/{session_id}/calibration", response_model=SessionManifest)
+    async def update_calibration(session_id: str, calibration: Calibration) -> SessionManifest:
+        manifest = require_active(manifest_or_404(session_id))
+        calibration.overridden = True
+        manifest.edits.calibration = calibration
+        catalog.save_edit(session_id, "calibration", calibration.model_dump(mode="json"))
+        persist(manifest)
+        return manifest
+
+    @app.put("/api/sessions/{session_id}/display-units", response_model=SessionManifest)
+    async def update_display_units(session_id: str, display_units: DisplayUnits) -> SessionManifest:
+        manifest = require_active(manifest_or_404(session_id))
+        manifest.edits.display_units = display_units
+        catalog.save_edit(session_id, "display_units", display_units.model_dump(mode="json"))
+        persist(manifest)
+        return manifest
+
+    @app.put("/api/sessions/{session_id}/reference-lap", response_model=SessionManifest)
+    async def update_reference_lap(
+        session_id: str, preference: ReferenceLapPreference
+    ) -> SessionManifest:
+        manifest = require_active(manifest_or_404(session_id))
+        manifest.edits.reference_lap = preference.reference_lap
+        catalog.save_edit(session_id, "reference_lap", preference.model_dump(mode="json"))
+        persist(manifest)
+        return manifest
+
+    @app.put("/api/sessions/{session_id}/bookmarks", response_model=SessionManifest)
+    async def update_bookmarks(session_id: str, bookmarks: list[Bookmark]) -> SessionManifest:
+        manifest = require_active(manifest_or_404(session_id))
+        identifiers = [bookmark.id for bookmark in bookmarks]
+        if len(identifiers) != len(set(identifiers)):
+            raise HTTPException(422, "Bookmark ids must be unique")
+        manifest.edits.bookmarks = bookmarks
+        catalog.save_edit(
+            session_id, "bookmarks", [bookmark.model_dump(mode="json") for bookmark in bookmarks]
+        )
+        persist(manifest)
+        return manifest
+
+    @app.put("/api/sessions/{session_id}/corners", response_model=list[CornerSummary])
+    async def update_corners(session_id: str, edits: list[CornerEdit]) -> list[CornerSummary]:
+        manifest = require_active(manifest_or_404(session_id))
+        edit_values = [edit.model_dump(exclude_none=True, mode="json") for edit in edits]
+        manifest.edits.corner_edits = [*manifest.edits.corner_edits, *edit_values]
+        catalog.save_edit(session_id, "corners", manifest.edits.corner_edits)
+        persist(manifest)
+        importer.reanalyze(session_id)
+        return await corners(session_id)
+
+    @app.post("/api/sessions/{session_id}/reanalyze", response_model=SessionManifest)
+    async def reanalyze(session_id: str) -> SessionManifest:
+        require_active(manifest_or_404(session_id))
+        return importer.reanalyze(session_id)
+
+    @app.post("/api/sessions/{session_id}/archive", response_model=SessionManifest)
+    async def archive(session_id: str) -> SessionManifest:
+        manifest_or_404(session_id)
+        if importer.is_running(session_id):
+            raise HTTPException(409, "Cannot archive a session while import is running")
+        try:
+            return archive_session(catalog, settings, session_id)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.post("/api/sessions/{session_id}/restore", response_model=SessionManifest)
+    async def restore(session_id: str) -> SessionManifest:
+        manifest_or_404(session_id)
+        try:
+            return restore_session(catalog, settings, session_id)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.delete("/api/sessions/{session_id}", status_code=204)
+    async def remove_session(
+        session_id: str, confirm: Annotated[str, Query(min_length=1)]
+    ) -> Response:
+        manifest_or_404(session_id)
+        try:
+            delete_session(
+                catalog,
+                settings,
+                session_id,
+                confirm_session_id=confirm,
+                running={session_id} if importer.is_running(session_id) else None,
+            )
+        except ValueError as exc:
+            status = 422 if "confirm_session_id" in str(exc) else 409
+            raise HTTPException(status, str(exc)) from exc
+        return Response(status_code=204)
+
+    @app.post("/api/catalog/backup", response_model=CatalogBackupResponse)
+    async def catalog_backup() -> CatalogBackupResponse:
+        return backup_catalog(catalog, settings)
+
+    @app.post("/api/catalog/cleanup", response_model=ArtifactCleanupResponse)
+    async def catalog_cleanup(
+        payload: ArtifactCleanupRequest | None = None,
+    ) -> ArtifactCleanupResponse:
+        request = payload or ArtifactCleanupRequest()
+        return cleanup_artifacts(catalog, settings, dry_run=request.dry_run)
+
+    @app.post("/api/catalog/repair", response_model=CatalogRepairResponse)
+    async def catalog_repair() -> CatalogRepairResponse:
+        return repair_catalog(catalog, settings)
+
+    @app.get("/api/sessions/{session_id}/media/proxy")
+    async def proxy_media(session_id: str, request: Request) -> StreamingResponse:
+        manifest = manifest_or_404(session_id)
+        relative = manifest.artifacts.get("proxy")
+        if not relative:
+            raise HTTPException(409, "Browser proxy was not generated")
+        path = _session_file(settings, session_id, relative)
+        if not path.is_file():
+            raise HTTPException(404, "Proxy artifact is missing")
+        return _range_response(path, request, "video/mp4")
+
+    @app.get("/api/sessions/{session_id}/media/source")
+    async def source_media(session_id: str, request: Request) -> StreamingResponse:
+        manifest = manifest_or_404(session_id)
+        if len(manifest.chapters) != 1:
+            raise HTTPException(
+                409, "Direct source playback is only available for one-chapter sessions"
+            )
+        chapter = manifest.chapters[0]
+        if not source_is_current(chapter.fingerprint):
+            raise HTTPException(409, "Source media is missing or has changed since import")
+        try:
+            path = settings.resolve_media(chapter.fingerprint.path)
+        except ValueError as exc:
+            raise HTTPException(403, "Source media is outside configured media roots") from exc
+        return _range_response(path, request, "video/mp4")
+
+    @app.get("/api/sessions/{session_id}/thumbnail")
+    async def thumbnail(session_id: str) -> Response:
+        manifest = manifest_or_404(session_id)
+        relative = manifest.artifacts.get("thumbnail")
+        if not relative:
+            raise HTTPException(409, "Thumbnail is not ready")
+        return Response(
+            content=_session_file(settings, session_id, relative).read_bytes(),
+            media_type="image/jpeg",
+        )
+
+    @app.post("/api/sessions/{session_id}/export")
+    async def export_bundle(
+        session_id: str, request: Request, include_clip_references: bool = False
+    ) -> StreamingResponse:
+        manifest = manifest_or_404(session_id)
+        bundle = build_analysis_bundle(
+            manifest,
+            settings.session_dir(session_id),
+            include_clip_references=include_clip_references,
+            settings=settings,
+        )
+        return _range_response(
+            bundle,
+            request,
+            "application/zip",
+            filename=f"{session_id}-analysis.zip",
+        )
+
+    frontend_dist = settings.project_root / "frontend" / "dist"
+    if frontend_dist.is_dir():
+
+        @app.get("/{asset_path:path}", include_in_schema=False)
+        async def frontend(asset_path: str) -> Response:
+            candidate = (frontend_dist / asset_path).resolve()
+            if not candidate.is_relative_to(frontend_dist) or not candidate.is_file():
+                candidate = frontend_dist / "index.html"
+            media_type = mimetypes.guess_type(candidate.name)[0] or "application/octet-stream"
+            cache = "no-cache" if candidate.name == "index.html" else "public, max-age=31536000"
+            return Response(
+                content=candidate.read_bytes(),
+                media_type=media_type,
+                headers={"Cache-Control": cache},
+            )
+
+    return app
+
+
+app = create_app()

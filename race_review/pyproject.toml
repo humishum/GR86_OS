@@ -1,0 +1,63 @@
+[project]
+name = "gr86-race-review"
+version = "0.1.0"
+description = "Local-first GoPro race review and telemetry analysis"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115,<0.116",
+  "anyio>=4.4,<4.10",
+  "numpy>=1.26,<3",
+  "pandas>=2.2,<3",
+  "pyarrow>=17,<22",
+  "pydantic>=2.9,<3",
+  "pyproj>=3.7,<4",
+  "scipy>=1.14,<2",
+  "uvicorn[standard]>=0.32,<0.36",
+  "gopropy==0.1.1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx>=0.28,<1",
+  "pytest>=9,<10",
+  "pytest-cov>=6,<8",
+  "ruff>=0.14,<1",
+]
+
+[project.scripts]
+race-review = "race_review.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/race_review"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.uv.sources]
+# Keep parser work in its independently versioned sibling checkout; provenance is pinned below.
+gopropy = { path = "../../gopro-py", editable = true }
+
+[tool.race-review]
+gopropy-repository = "https://github.com/humishum/gopropy.git"
+gopropy-revision = "082d65bfb2e0629c3dc46c5f83d6208e661a8ca7"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+  "ffmpeg: requires ffmpeg and ffprobe for portable H.264 fixtures",
+  "nvidia: opt-in NVIDIA CUDA/NVENC validation; set RACE_REVIEW_NVIDIA=1",
+  "gopro_sample: opt-in full GoPro chapter assertions; set RACE_REVIEW_GOPRO_SAMPLE",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

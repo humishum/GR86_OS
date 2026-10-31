@@ -1,0 +1,130 @@
+# Race Review TODO
+
+This is the active engineering checklist. Keep tasks small enough to complete or produce
+a reviewable artifact in one focused session. Move larger outcome changes into the
+[roadmap](docs/ROADMAP.md).
+
+## Start tomorrow
+
+- [x] Run `nvidia-smi` and the forced CUDA proxy path on the host.
+- [ ] Benchmark `GX020115.MP4` with CPU and CUDA: wall time, FFmpeg speed, output size,
+  average bitrate, and representative seek latency. A bounded 30-second host verification
+  is recorded in [the GTX 1070 benchmark](docs/benchmarks/proxy-2026-07-18.md); the
+  full-chapter run is intentionally deferred.
+- [x] Visually compare NVENC CQ 21 against the existing x264 proxy at fast motion and
+  track-edge detail; adjust CQ/preset only with recorded results.
+- [x] Add a generated 3–5 second H.264 test fixture with changing telemetry for real
+  Playwright playback and seeking.
+- [x] Assert that video time, timeline, lap gauge, speed gauge, map source, chart cursor,
+  and readout all change after playback and paused seeking.
+- [x] Add a compact diagnostics drawer for current media/telemetry synchronization. Keep
+  it disabled by default and expose it only through a menu.
+- [x] Render unavailable gauge values as `—`, not `0.00`.
+- [x] Add Space, Left/Right, Shift+Left/Right, and frame-step keyboard controls.
+
+## Media and import reliability
+
+- [x] Expose the original single chapter through a constrained byte-range endpoint.
+- [x] Detect browser `hvc1` support and implement direct-source-first playback with proxy
+  fallback for one-chapter sessions.
+- [x] Keep the compatibility proxy mandatory for a continuous multi-chapter media clock.
+- [x] Add explicit rebuild proxy, retry import, and cancel import actions.
+- [x] Make import resume stage-aware with artifact validity/version checks.
+- [x] Persist structured per-stage start/end time, backend, command profile, and failure
+  diagnostics.
+- [x] Decide whether source-time gaps should remain metadata-only or become explicit
+  black/silent spans in the canonical media timeline.
+- [x] Test CUDA failure after partial progress and confirm clean CPU fallback.
+- [x] Test proxy-cache invalidation across backend/profile/version changes.
+- [x] Add stale-source relocation rather than warning only.
+
+## Playback and synchronization
+
+- [x] Add a development synchronization overlay: video time, sample bracket, interpolated
+  time, requestVideoFrameCallback support, and drift.
+- [x] Add play/pause/ended state listeners so icons update independently of telemetry
+  renders.
+- [x] Add previous/next frame and previous/next event controls.
+- [x] Add lap and corner keyboard navigation.
+- [x] Test seeking near zero, duration, keyframes, chapter boundaries, and discontinuities.
+- [x] Test background-tab pause/resume and playback-rate changes.
+- [x] Add a user-visible media error with source/proxy fallback action.
+
+## Charts and route
+
+- [x] Reserve chart readout space so axis details are not covered by the player bar.
+- [x] Reduce the persistent player bar to 46 px desktop and 52 px mobile.
+- [x] Give speed and g independent labeled y scales.
+- [x] Add zoom, pan, selection, reset, and a moving time window.
+- [x] Link chart hover/click to video seek and route position.
+- [x] Add track-distance mode to the main chart.
+- [x] Add map follow mode, heading-up mode, and full-route reset.
+- [x] Allow individual lap visibility/color selection.
+- [x] Add accessible text summaries for chart windows and selected points.
+- [x] Confirm all readouts fit at 320, 375, 768, 1440, and ultrawide widths.
+
+## Analysis quality
+
+- [ ] Display GPS validity, fix dimension, dilution of precision, and rejection reason near the
+  current point.
+- [ ] Show confidence and diagnostics for inferred start/finish, laps, corners, and axes.
+- [ ] Add direct map editing for start/finish position and crossing direction.
+- [ ] Add direct chart/map editing for corner entry, apex, and exit.
+- [ ] Validate pit-lane proximity and noisy GPS against synthetic and real cases.
+- [ ] Fuse or compare calibrated IMU acceleration with GPS-derived g.
+- [ ] Add explicit out/hot/cooldown/in lap classification and manual exclusion.
+- [ ] Add sector definitions without making sectors a prerequisite for lap delta.
+- [ ] Add deterministic processing fingerprints for derived analysis artifacts.
+
+## Comparison and review workflow
+
+- [x] Link comparison charts, route-distance cursor, delta trace, and video seek.
+- [x] Add largest-gain/loss region summaries.
+- [x] Add corner comparison cards and rank differences by time impact.
+- [x] Add bookmarks, notes, tags, and clip ranges.
+- [x] Add a reference-lap preference that persists per session.
+- [x] Add fullscreen/theater video modes without hiding telemetry context.
+
+## API, storage, and export
+
+- [x] Add endpoint contract tests for every edit action and error response.
+- [x] Add manifest migrations before schema version 2.
+- [x] Make SQLite/file-manifest authority and repair behavior explicit in code.
+- [x] Add session delete/archive with a recoverable confirmation workflow.
+- [x] Add catalog backup and artifact cleanup tooling.
+- [x] Add export provenance: application version, FFmpeg version, proxy backend/profile,
+  and full processing fingerprints.
+- [x] Stream large CSV exports without loading each Parquet file fully into memory.
+
+## Frontend quality and accessibility
+
+- [x] Add a consistent visible `:focus-visible` treatment and cover the critical review
+  control tab order in Playwright.
+- [x] Make the analysis drawer a keyboard-contained modal with initial focus, Escape
+  dismissal, and trigger-focus restoration.
+- [x] Honor reduced-motion preferences in CSS transitions and MapLibre camera movement.
+- [x] Establish a responsive metadata text floor for operational gauges, diagnostics,
+  chart/map readouts, and editor fields.
+- [x] Lazy-load MapLibre, comparison, and editor paths with layout-preserving fallbacks;
+  the startup JavaScript chunk is now about 288 KB before gzip.
+- [x] Add a top-level render error boundary and structured, actionable API errors.
+- [x] Announce and expose retry/recovery actions for library, import, processing, media,
+  comparison, and editor-save failures.
+- [x] Validate and persist display-unit choices through the API manifest and edit ledger.
+- [x] Validate local display-unit defaults and apply them to newly imported sessions.
+- [x] Apply session display units consistently to gauges, charts, laps, corner distance,
+  and map elevation while keeping source telemetry in SI.
+- [x] Add a Vitest, jsdom, and React Testing Library component-test layer.
+- [x] Cover interpolation boundaries, discrete values, and null preservation with unit
+  tests.
+- [x] Cover missing-versus-zero gauge readouts with rendered component tests.
+
+## Test and release hygiene
+
+- [x] Run Ruff, pytest, TypeScript build, and Playwright in CI.
+- [x] Add Linux/macOS media fixtures and opt-in NVIDIA validation.
+- [x] Add the full GoPro sample assertions to a documented local release checklist.
+- [x] Record performance budgets for import, telemetry requests, map updates, and seeking.
+- [x] Define versioning/release notes for manifest, analysis, and proxy profile changes.
+- [x] Keep [Architecture](docs/ARCHITECTURE.md), [Design](docs/DESIGN.md), this TODO,
+  and the [Roadmap](docs/ROADMAP.md) current with behavior changes.
